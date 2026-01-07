@@ -938,3 +938,394 @@ input {
 .task-section[data-status="DONE"].drag-over-section {
   outline-color: var(--status-done);
 }
+
+/* ===== Screen Navigation ===== */
+.screen-nav {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--bg-section);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.screen-tab {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.screen-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
+.screen-tab.active {
+  color: var(--text-primary);
+  background: var(--accent-primary);
+}
+
+/* ===== Screen Toggle ===== */
+.screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+/* ===== Focus Header ===== */
+.focus-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.focus-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.focus-task-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Focus Content ===== */
+.focus-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-xl);
+  gap: var(--space-xl);
+  overflow-y: auto;
+}
+
+/* ===== Focus Task Card ===== */
+.focus-task-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.focus-task-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.focus-task-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.focus-task-meta {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  padding-left: 14px;
+}
+
+.focus-task-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.btn-sm {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+}
+
+/* ===== Timer Display ===== */
+.timer-display {
+  font-size: 72px;
+  font-weight: 200;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--text-primary);
+  letter-spacing: 4px;
+  text-align: center;
+}
+
+.timer-display.running {
+  color: var(--accent-primary);
+}
+
+.timer-display.countdown-warning {
+  color: var(--status-waiting);
+}
+
+.timer-display.countdown-danger {
+  color: var(--danger);
+}
+
+/* ===== Timer Mode Selector ===== */
+.timer-mode-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-section);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+}
+
+.mode-btn {
+  padding: var(--space-sm) var(--space-lg);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  transition: all var(--transition-fast);
+}
+
+.mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  color: var(--text-primary);
+  background: var(--accent-primary);
+}
+
+/* ===== Countdown Presets ===== */
+.countdown-presets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.countdown-presets.hidden {
+  display: none;
+}
+
+.preset-btn {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.preset-btn:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.preset-btn.active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.custom-time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.custom-input {
+  width: 50px;
+  padding: var(--space-sm);
+  font-size: 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.custom-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.custom-time span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ===== Timer Controls ===== */
+.timer-controls {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: center;
+}
+
+.timer-btn {
+  padding: var(--space-md) var(--space-xl);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.timer-btn.reset {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.timer-btn.reset:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.timer-btn.start {
+  background: var(--accent-primary);
+  color: white;
+  min-width: 120px;
+}
+
+.timer-btn.start:hover {
+  background: var(--accent-hover);
+}
+
+.timer-btn.start.paused {
+  background: var(--status-waiting);
+}
+
+.timer-btn.stop {
+  background: var(--bg-card);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.timer-btn.stop:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ===== Focus Footer ===== */
+.focus-footer {
+  padding: var(--space-lg);
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-section);
+}
+
+.focus-stats {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.stats-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.stats-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.session-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+}
+
+.session-item-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-duration {
+  color: var(--text-secondary);
+  margin-left: var(--space-sm);
+}
+
+/* ===== Task Selection Modal ===== */
+.modal-large {
+  max-width: 500px;
+}
+
+.task-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.task-select-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.task-select-item:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-card-hover);
+}
+
+.task-select-item .task-title {
+  flex: 1;
+}
+
+/* ===== Focus Button on Task Card ===== */
+.focus-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.task-card:hover .focus-btn {
+  opacity: 1;
+}
+
+.focus-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: var(--accent-primary);
+}

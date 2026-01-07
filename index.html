@@ -12,79 +12,162 @@
 
 <body>
   <div class="app">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-left">
-        <span class="header-date" id="headerDate">今日</span>
-        <h1 class="header-title">私のタスク</h1>
-      </div>
-      <button class="header-icon" id="settingsBtn" aria-label="設定">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-          </path>
-        </svg>
-      </button>
-    </header>
-
-    <!-- Filter Chips (narrow screens only) -->
-    <nav class="filter-chips narrow-only" id="filterChips">
-      <button class="filter-chip active" data-filter="all">すべて</button>
-      <button class="filter-chip" data-filter="IN_PROGRESS">進行中</button>
-      <button class="filter-chip" data-filter="WAITING">待ち</button>
-      <button class="filter-chip" data-filter="DONE">完了</button>
+    <!-- Screen Navigation -->
+    <nav class="screen-nav">
+      <button class="screen-tab active" data-screen="tasks">Tasks</button>
+      <button class="screen-tab" data-screen="focus">Focus</button>
     </nav>
 
-    <!-- Privacy Note -->
-    <p class="privacy-note">このアプリはタスク本文を送信しません（ローカル保存）</p>
+    <!-- ==================== TASKS SCREEN ==================== -->
+    <div class="screen" id="tasksScreen">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <span class="header-date" id="headerDate">今日</span>
+          <h1 class="header-title">私のタスク</h1>
+        </div>
+        <button class="header-icon" id="settingsBtn" aria-label="設定">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+            </path>
+          </svg>
+        </button>
+      </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Sections Container (for responsive 3-column) -->
-      <div class="sections-container" id="sectionsContainer">
-        <!-- In Progress Section -->
-        <section class="task-section" data-status="IN_PROGRESS">
-          <button class="section-header" data-collapsed="false">
-            <span class="section-toggle">▼</span>
-            <span class="section-title">進行中</span>
-            <span class="section-count" id="countInProgress">0</span>
-          </button>
-          <ul class="task-list" id="listInProgress"></ul>
-        </section>
+      <!-- Filter Chips (narrow screens only) -->
+      <nav class="filter-chips narrow-only" id="filterChips">
+        <button class="filter-chip active" data-filter="all">すべて</button>
+        <button class="filter-chip" data-filter="IN_PROGRESS">進行中</button>
+        <button class="filter-chip" data-filter="WAITING">待ち</button>
+        <button class="filter-chip" data-filter="DONE">完了</button>
+      </nav>
 
-        <!-- Waiting Section -->
-        <section class="task-section" data-status="WAITING">
-          <button class="section-header" data-collapsed="false">
-            <span class="section-toggle">▼</span>
-            <span class="section-title">承認・返信待ち</span>
-            <span class="section-count" id="countWaiting">0</span>
-          </button>
-          <ul class="task-list" id="listWaiting"></ul>
-        </section>
+      <!-- Privacy Note -->
+      <p class="privacy-note">このアプリはタスク本文を送信しません（ローカル保存）</p>
 
-        <!-- Done Section -->
-        <section class="task-section" data-status="DONE">
-          <button class="section-header" data-collapsed="false">
-            <span class="section-toggle">▼</span>
-            <span class="section-title">完了</span>
-            <span class="section-count" id="countDone">0</span>
-          </button>
-          <ul class="task-list" id="listDone"></ul>
-        </section>
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="sections-container" id="sectionsContainer">
+          <!-- In Progress Section -->
+          <section class="task-section" data-status="IN_PROGRESS">
+            <button class="section-header" data-collapsed="false">
+              <span class="section-toggle">▼</span>
+              <span class="section-title">進行中</span>
+              <span class="section-count" id="countInProgress">0</span>
+            </button>
+            <ul class="task-list" id="listInProgress"></ul>
+          </section>
+
+          <!-- Waiting Section -->
+          <section class="task-section" data-status="WAITING">
+            <button class="section-header" data-collapsed="false">
+              <span class="section-toggle">▼</span>
+              <span class="section-title">承認・返信待ち</span>
+              <span class="section-count" id="countWaiting">0</span>
+            </button>
+            <ul class="task-list" id="listWaiting"></ul>
+          </section>
+
+          <!-- Done Section -->
+          <section class="task-section" data-status="DONE">
+            <button class="section-header" data-collapsed="false">
+              <span class="section-toggle">▼</span>
+              <span class="section-title">完了</span>
+              <span class="section-count" id="countDone">0</span>
+            </button>
+            <ul class="task-list" id="listDone"></ul>
+          </section>
+        </div>
+      </main>
+
+      <!-- Date Strip -->
+      <nav class="date-strip" id="dateStrip"></nav>
+
+      <!-- Floating Add Button -->
+      <button class="fab" id="fabAdd" aria-label="タスクを追加">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ==================== FOCUS SCREEN ==================== -->
+    <div class="screen hidden" id="focusScreen">
+      <!-- Focus Header -->
+      <header class="focus-header">
+        <h1 class="focus-title">Focus</h1>
+        <span class="focus-task-name" id="focusTaskName">タスク未選択</span>
+        <button class="header-icon" id="focusSettingsBtn" aria-label="設定">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+            </path>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Focus Content -->
+      <div class="focus-content">
+        <!-- Focus Task Card -->
+        <div class="focus-task-card" id="focusTaskCard">
+          <div class="focus-task-info">
+            <span class="priority-dot priority-2" id="focusPriorityDot"></span>
+            <span class="focus-task-title" id="focusTaskTitle">タスクを選択してください</span>
+          </div>
+          <div class="focus-task-meta">
+            <span class="chip" id="focusEstimate">—</span>
+            <span class="chip carried hidden" id="focusCarried"></span>
+          </div>
+          <div class="focus-task-actions">
+            <button class="btn btn-secondary btn-sm" id="changeTaskBtn">タスク変更</button>
+            <button class="btn btn-primary btn-sm" id="completeTaskBtn">完了にする</button>
+          </div>
+        </div>
+
+        <!-- Timer Display -->
+        <div class="timer-display" id="timerDisplay">00:00</div>
+
+        <!-- Timer Mode Selector -->
+        <div class="timer-mode-selector">
+          <button class="mode-btn active" data-mode="stopwatch">経過</button>
+          <button class="mode-btn" data-mode="countdown">区切り</button>
+        </div>
+
+        <!-- Countdown Presets (hidden when stopwatch) -->
+        <div class="countdown-presets hidden" id="countdownPresets">
+          <button class="preset-btn" data-minutes="15">15m</button>
+          <button class="preset-btn active" data-minutes="30">30m</button>
+          <button class="preset-btn" data-minutes="45">45m</button>
+          <button class="preset-btn" data-minutes="60">60m</button>
+          <div class="custom-time">
+            <input type="number" class="custom-input" id="customMinutes" min="1" max="180" placeholder="—">
+            <span>分</span>
+          </div>
+        </div>
+
+        <!-- Timer Controls -->
+        <div class="timer-controls">
+          <button class="timer-btn reset" id="timerReset">Reset</button>
+          <button class="timer-btn start" id="timerStart">▶ Start</button>
+          <button class="timer-btn stop" id="timerStop">Stop</button>
+        </div>
       </div>
-    </main>
 
-    <!-- Date Strip -->
-    <nav class="date-strip" id="dateStrip"></nav>
+      <!-- Focus Footer: Stats -->
+      <div class="focus-footer">
+        <div class="focus-stats">
+          <span class="stats-label">今日の集中:</span>
+          <span class="stats-value" id="todayFocusTime">0m</span>
+        </div>
+        <ul class="session-history" id="sessionHistory"></ul>
+      </div>
+    </div>
 
-    <!-- Floating Add Button -->
-    <button class="fab" id="fabAdd" aria-label="タスクを追加">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-      </svg>
-    </button>
+    <!-- ==================== MODALS ==================== -->
 
     <!-- Add Task Modal -->
     <div class="modal-overlay hidden" id="addModal">
@@ -94,8 +177,8 @@
           <button class="modal-close" id="modalClose">×</button>
         </div>
         <div class="modal-body">
-          <input type="text" class="task-input" id="taskInput" placeholder="例) 資料送付 30m #mail #cs" autocomplete="off">
-          <p class="input-hint">時間は 5m/15m/30m/60m、タグは #xxx で入力</p>
+          <input type="text" class="task-input" id="taskInput" placeholder="例) 資料送付 30m" autocomplete="off">
+          <p class="input-hint">時間は 5m/15m/30m/60m で入力</p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modalCancel">キャンセル</button>
@@ -104,7 +187,7 @@
       </div>
     </div>
 
-    <!-- Settings Panel -->
+    <!-- Settings Modal -->
     <div class="modal-overlay hidden" id="settingsModal">
       <div class="modal">
         <div class="modal-header">
@@ -122,6 +205,19 @@
             <span>🗑️</span> 全データを削除
           </button>
           <input type="file" id="importFile" accept=".json" hidden>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Selection Modal (for Focus) -->
+    <div class="modal-overlay hidden" id="taskSelectModal">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2 class="modal-title">フォーカスするタスクを選択</h2>
+          <button class="modal-close" id="taskSelectClose">×</button>
+        </div>
+        <div class="modal-body">
+          <ul class="task-select-list" id="taskSelectList"></ul>
         </div>
       </div>
     </div>

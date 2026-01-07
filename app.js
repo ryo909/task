@@ -8,9 +8,10 @@
 
   // ===== Constants =====
   const DB_NAME = 'SideDockToDo';
-  const DB_VERSION = 2; // Increment for migration
+  const DB_VERSION = 3; // v3: Add sessions store
   const STORE_DAYS = 'days';
   const STORE_META = 'meta';
+  const STORE_SESSIONS = 'sessions';
   const ARCHIVE_DAYS = 7;
 
   const ESTIMATE_VALUES = [null, 5, 15, 30, 60];
@@ -29,6 +30,20 @@
   let selectedDate = getTodayString();
   let currentFilter = 'all';
   let collapsedSections = {};
+  let currentScreen = 'tasks';
+
+  // Focus state
+  let focusState = {
+    activeTaskId: null,
+    activeTask: null,
+    running: false,
+    mode: 'stopwatch', // 'stopwatch' | 'countdown'
+    plannedSeconds: 30 * 60, // default 30 min for countdown
+    startedAt: null,
+    pausedAt: null,
+    accumulatedSeconds: 0
+  };
+  let timerInterval = null;
 
   // ===== DOM Elements =====
   const elements = {};
@@ -147,6 +162,10 @@
         if (!database.objectStoreNames.contains(STORE_META)) {
           database.createObjectStore(STORE_META);
         }
+
+        if (!database.objectStoreNames.contains(STORE_SESSIONS)) {
+          database.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
+        }
       };
     });
   }
@@ -220,13 +239,44 @@
 
   function clearAllData() {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction([STORE_DAYS, STORE_META], 'readwrite');
+      const tx = db.transaction([STORE_DAYS, STORE_META, STORE_SESSIONS], 'readwrite');
       tx.objectStore(STORE_DAYS).clear();
       tx.objectStore(STORE_META).clear();
+      tx.objectStore(STORE_SESSIONS).clear();
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
+  }
+
+  // ===== Session Functions =====
+  function saveSession(session) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_SESSIONS, 'readwrite');
+      const store = tx.objectStore(STORE_SESSIONS);
+      const request = store.put(session);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function getSessionsForDate(date) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_SESSIONS, 'readonly');
+      const store = tx.objectStore(STORE_SESSIONS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const sessions = request.result.filter(s => s.date === date);
+        resolve(sessions.sort((a, b) => b.endedAt - a.endedAt));
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function getTodaySessions() {
+    return getSessionsForDate(getTodayString());
   }
 
   // ===== Data Migration =====
@@ -511,6 +561,19 @@
     deleteBtn.title = '削除';
     deleteBtn.addEventListener('click', () => handleDelete(task.id));
     row.appendChild(deleteBtn);
+
+    // Focus button (only for IN_PROGRESS tasks)
+    if (task.status === 'IN_PROGRESS') {
+      const focusBtn = document.createElement('button');
+      focusBtn.className = 'focus-btn';
+      focusBtn.textContent = '▶';
+      focusBtn.title = 'Focus';
+      focusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        focusOnTask(task.id);
+      });
+      row.appendChild(focusBtn);
+    }
 
     li.appendChild(row);
 
@@ -950,6 +1013,412 @@
     });
   }
 
+  // ===== Screen Navigation =====
+  function switchScreen(screenName) {
+    currentScreen = screenName;
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('.screen-tab').forEach(t => t.classList.remove('active'));
+
+    const screen = document.getElementById(screenName + 'Screen');
+    const tab = document.querySelector(`.screen-tab[data-screen="${screenName}"]`);
+
+    if (screen) screen.classList.remove('hidden');
+    if (tab) tab.classList.add('active');
+
+    if (screenName === 'focus') {
+      initFocusScreen();
+    }
+  }
+
+  // ===== Focus Screen =====
+  async function initFocusScreen() {
+    // Restore focus state from meta
+    const savedState = await getMeta('focusState');
+    if (savedState) {
+      focusState = { ...focusState, ...savedState };
+
+      // Restore active task
+      if (focusState.activeTaskId) {
+        const record = await getDateRecord(selectedDate);
+        focusState.activeTask = record.tasks.find(t => t.id === focusState.activeTaskId);
+      }
+
+      // Restore timer if running
+      if (focusState.running && focusState.startedAt) {
+        startTimerTick();
+      }
+    }
+
+    renderFocusUI();
+    renderFocusSessions();
+
+    // If no active task, show selection modal
+    if (!focusState.activeTask) {
+      openTaskSelectModal();
+    }
+  }
+
+  function renderFocusUI() {
+    const task = focusState.activeTask;
+
+    // Update header
+    const focusTaskName = document.getElementById('focusTaskName');
+    focusTaskName.textContent = task ? task.title : 'タスク未選択';
+
+    // Update task card
+    const focusTaskTitle = document.getElementById('focusTaskTitle');
+    focusTaskTitle.textContent = task ? task.title : 'タスクを選択してください';
+
+    const focusPriorityDot = document.getElementById('focusPriorityDot');
+    focusPriorityDot.className = 'priority-dot priority-' + (task ? task.priority : 2);
+
+    const focusEstimate = document.getElementById('focusEstimate');
+    focusEstimate.textContent = task && task.estimateMinutes ? task.estimateMinutes + 'm' : '—';
+
+    const focusCarried = document.getElementById('focusCarried');
+    if (task && task.carriedFrom) {
+      focusCarried.textContent = '↪ ' + task.carriedFrom;
+      focusCarried.classList.remove('hidden');
+    } else {
+      focusCarried.classList.add('hidden');
+    }
+
+    // Update timer display
+    updateTimerDisplay();
+
+    // Update mode buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === focusState.mode);
+    });
+
+    // Show/hide countdown presets
+    const countdownPresets = document.getElementById('countdownPresets');
+    if (focusState.mode === 'countdown') {
+      countdownPresets.classList.remove('hidden');
+    } else {
+      countdownPresets.classList.add('hidden');
+    }
+
+    // Update start button text
+    const timerStart = document.getElementById('timerStart');
+    if (focusState.running) {
+      timerStart.textContent = '⏸ Pause';
+      timerStart.classList.add('paused');
+    } else {
+      timerStart.textContent = '▶ Start';
+      timerStart.classList.remove('paused');
+    }
+
+    // Add running class to timer display
+    const timerDisplay = document.getElementById('timerDisplay');
+    timerDisplay.classList.toggle('running', focusState.running);
+  }
+
+  function updateTimerDisplay() {
+    const timerDisplay = document.getElementById('timerDisplay');
+    let seconds;
+
+    if (focusState.mode === 'stopwatch') {
+      seconds = focusState.accumulatedSeconds;
+      if (focusState.running && focusState.startedAt) {
+        seconds += Math.floor((Date.now() - focusState.startedAt) / 1000);
+      }
+    } else {
+      // Countdown
+      let elapsed = focusState.accumulatedSeconds;
+      if (focusState.running && focusState.startedAt) {
+        elapsed += Math.floor((Date.now() - focusState.startedAt) / 1000);
+      }
+      seconds = Math.max(0, focusState.plannedSeconds - elapsed);
+
+      // Color warnings
+      timerDisplay.classList.remove('countdown-warning', 'countdown-danger');
+      if (seconds <= 60) {
+        timerDisplay.classList.add('countdown-danger');
+      } else if (seconds <= 300) {
+        timerDisplay.classList.add('countdown-warning');
+      }
+    }
+
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    timerDisplay.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+  }
+
+  function startTimerTick() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      updateTimerDisplay();
+
+      // Check countdown completion
+      if (focusState.mode === 'countdown' && focusState.running) {
+        let elapsed = focusState.accumulatedSeconds;
+        if (focusState.startedAt) {
+          elapsed += Math.floor((Date.now() - focusState.startedAt) / 1000);
+        }
+        if (elapsed >= focusState.plannedSeconds) {
+          stopTimer(true);
+        }
+      }
+    }, 1000);
+  }
+
+  function stopTimerTick() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function startTimer() {
+    if (!focusState.activeTask) {
+      openTaskSelectModal();
+      return;
+    }
+
+    if (focusState.running) {
+      // Pause
+      const now = Date.now();
+      focusState.accumulatedSeconds += Math.floor((now - focusState.startedAt) / 1000);
+      focusState.startedAt = null;
+      focusState.running = false;
+      stopTimerTick();
+    } else {
+      // Start/Resume
+      focusState.startedAt = Date.now();
+      focusState.running = true;
+      startTimerTick();
+    }
+
+    saveFocusState();
+    renderFocusUI();
+  }
+
+  function resetTimer() {
+    focusState.accumulatedSeconds = 0;
+    focusState.startedAt = null;
+    focusState.running = false;
+    stopTimerTick();
+    saveFocusState();
+    renderFocusUI();
+  }
+
+  async function stopTimer(autoCompleted) {
+    if (!focusState.activeTask) return;
+
+    const now = Date.now();
+    let duration = focusState.accumulatedSeconds;
+    if (focusState.running && focusState.startedAt) {
+      duration += Math.floor((now - focusState.startedAt) / 1000);
+    }
+
+    // Only save session if there's meaningful duration
+    if (duration >= 5) {
+      const session = {
+        id: generateId(),
+        date: getTodayString(),
+        taskId: focusState.activeTask.id,
+        taskTitle: focusState.activeTask.title,
+        mode: focusState.mode,
+        plannedMinutes: focusState.mode === 'countdown' ? focusState.plannedSeconds / 60 : null,
+        startedAt: now - (duration * 1000),
+        endedAt: now,
+        durationSeconds: duration
+      };
+      await saveSession(session);
+    }
+
+    // Reset timer
+    focusState.accumulatedSeconds = 0;
+    focusState.startedAt = null;
+    focusState.running = false;
+    stopTimerTick();
+
+    saveFocusState();
+    renderFocusUI();
+    renderFocusSessions();
+  }
+
+  function setTimerMode(mode) {
+    if (focusState.running) return; // Don't change mode while running
+
+    focusState.mode = mode;
+    saveFocusState();
+    renderFocusUI();
+  }
+
+  function setCountdownPreset(minutes) {
+    if (focusState.running) return;
+
+    focusState.plannedSeconds = minutes * 60;
+
+    // Update preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.minutes) === minutes);
+    });
+    document.getElementById('customMinutes').value = '';
+
+    saveFocusState();
+    renderFocusUI();
+  }
+
+  function setCustomCountdown(minutes) {
+    if (focusState.running || !minutes || minutes < 1) return;
+
+    focusState.plannedSeconds = Math.min(minutes, 180) * 60;
+
+    // Clear preset selection
+    document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+
+    saveFocusState();
+    renderFocusUI();
+  }
+
+  async function saveFocusState() {
+    await setMeta('focusState', {
+      activeTaskId: focusState.activeTaskId,
+      running: focusState.running,
+      mode: focusState.mode,
+      plannedSeconds: focusState.plannedSeconds,
+      startedAt: focusState.startedAt,
+      accumulatedSeconds: focusState.accumulatedSeconds
+    });
+  }
+
+  async function renderFocusSessions() {
+    const sessions = await getTodaySessions();
+    const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
+
+    // Update total time
+    const todayFocusTime = document.getElementById('todayFocusTime');
+    if (totalSeconds >= 3600) {
+      const hours = Math.floor(totalSeconds / 3600);
+      const mins = Math.floor((totalSeconds % 3600) / 60);
+      todayFocusTime.textContent = hours + 'h ' + mins + 'm';
+    } else {
+      todayFocusTime.textContent = Math.floor(totalSeconds / 60) + 'm';
+    }
+
+    // Render recent sessions (max 3)
+    const sessionHistory = document.getElementById('sessionHistory');
+    while (sessionHistory.firstChild) {
+      sessionHistory.removeChild(sessionHistory.firstChild);
+    }
+
+    sessions.slice(0, 3).forEach(session => {
+      const li = document.createElement('li');
+      li.className = 'session-item';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'session-item-title';
+      titleSpan.textContent = session.taskTitle;
+
+      const durationSpan = document.createElement('span');
+      durationSpan.className = 'session-item-duration';
+      const mins = Math.floor(session.durationSeconds / 60);
+      durationSpan.textContent = mins + 'm (' + (session.mode === 'countdown' ? '区切り' : '経過') + ')';
+
+      li.appendChild(titleSpan);
+      li.appendChild(durationSpan);
+      sessionHistory.appendChild(li);
+    });
+  }
+
+  // ===== Task Selection Modal =====
+  async function openTaskSelectModal() {
+    const record = await getDateRecord(selectedDate);
+    const inProgressTasks = record.tasks.filter(t => t.status === 'IN_PROGRESS');
+
+    const taskSelectList = document.getElementById('taskSelectList');
+    while (taskSelectList.firstChild) {
+      taskSelectList.removeChild(taskSelectList.firstChild);
+    }
+
+    if (inProgressTasks.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-state';
+      emptyDiv.textContent = '進行中のタスクがありません';
+      taskSelectList.appendChild(emptyDiv);
+    } else {
+      inProgressTasks.forEach(task => {
+        const li = document.createElement('li');
+        li.className = 'task-select-item';
+        li.dataset.id = task.id;
+
+        const dot = document.createElement('span');
+        dot.className = 'priority-dot priority-' + task.priority;
+
+        const title = document.createElement('span');
+        title.className = 'task-title';
+        title.textContent = task.title;
+
+        li.appendChild(dot);
+        li.appendChild(title);
+        li.addEventListener('click', () => selectFocusTask(task));
+        taskSelectList.appendChild(li);
+      });
+    }
+
+    document.getElementById('taskSelectModal').classList.remove('hidden');
+  }
+
+  function closeTaskSelectModal() {
+    document.getElementById('taskSelectModal').classList.add('hidden');
+  }
+
+  async function selectFocusTask(task) {
+    // If timer is running, confirm
+    if (focusState.running) {
+      await stopTimer(false);
+    }
+
+    focusState.activeTaskId = task.id;
+    focusState.activeTask = task;
+    focusState.accumulatedSeconds = 0;
+    focusState.startedAt = null;
+    focusState.running = false;
+
+    saveFocusState();
+    closeTaskSelectModal();
+    renderFocusUI();
+  }
+
+  async function completeActiveTask() {
+    if (!focusState.activeTask) return;
+
+    // Stop timer and save session
+    if (focusState.running || focusState.accumulatedSeconds > 0) {
+      await stopTimer(false);
+    }
+
+    // Mark task as done
+    await updateTask(selectedDate, focusState.activeTask.id, { status: 'DONE' });
+
+    // Clear focus state
+    focusState.activeTaskId = null;
+    focusState.activeTask = null;
+    focusState.accumulatedSeconds = 0;
+    focusState.startedAt = null;
+    focusState.running = false;
+
+    saveFocusState();
+    renderFocusUI();
+
+    // Show task selection
+    openTaskSelectModal();
+  }
+
+  // ===== Focus from Tasks Screen =====
+  function focusOnTask(taskId) {
+    getDateRecord(selectedDate).then(record => {
+      const task = record.tasks.find(t => t.id === taskId);
+      if (task) {
+        selectFocusTask(task);
+        switchScreen('focus');
+      }
+    });
+  }
+
   // ===== Visibility Change Handler =====
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible') {
@@ -958,6 +1427,12 @@
         purgeOldRecords();
         renderTasks();
         renderDateStrip();
+
+        // Refresh focus screen if active
+        if (currentScreen === 'focus') {
+          renderFocusUI();
+          renderFocusSessions();
+        }
       });
     }
   }
@@ -1104,6 +1579,40 @@
       list.addEventListener('dragleave', handleListDragLeave);
       list.addEventListener('drop', handleListDrop);
     });
+
+    // Event listeners - Screen Navigation
+    document.querySelectorAll('.screen-tab').forEach(tab => {
+      tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
+    });
+
+    // Event listeners - Focus Screen
+    document.getElementById('timerStart').addEventListener('click', startTimer);
+    document.getElementById('timerReset').addEventListener('click', resetTimer);
+    document.getElementById('timerStop').addEventListener('click', () => stopTimer(false));
+    document.getElementById('changeTaskBtn').addEventListener('click', openTaskSelectModal);
+    document.getElementById('completeTaskBtn').addEventListener('click', completeActiveTask);
+
+    // Timer mode
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => setTimerMode(btn.dataset.mode));
+    });
+
+    // Countdown presets
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => setCountdownPreset(parseInt(btn.dataset.minutes)));
+    });
+    document.getElementById('customMinutes').addEventListener('change', (e) => {
+      setCustomCountdown(parseInt(e.target.value));
+    });
+
+    // Task selection modal
+    document.getElementById('taskSelectClose').addEventListener('click', closeTaskSelectModal);
+    document.getElementById('taskSelectModal').addEventListener('click', (e) => {
+      if (e.target.id === 'taskSelectModal') closeTaskSelectModal();
+    });
+
+    // Focus settings button
+    document.getElementById('focusSettingsBtn').addEventListener('click', openSettingsModal);
 
     // Visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
