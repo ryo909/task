@@ -481,6 +481,32 @@ input {
   background: rgba(245, 158, 11, 0.1);
 }
 
+/* Estimate Dropdown */
+.estimate-select {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-chip);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition: all var(--transition-fast);
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%238a8a8e' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+}
+
+.estimate-select:hover,
+.estimate-select:focus {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
 /* ===== Date Strip ===== */
 .date-strip {
   position: fixed;
@@ -831,8 +857,9 @@ input {
     transform: translateX(-50%);
   }
 
+  /* FAB: Keep always visible, min 20px from right edge */
   .fab {
-    right: calc(50% - 580px);
+    right: max(20px, calc(50% - 580px));
   }
 
   /* Hide filter chips on wide screens */

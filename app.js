@@ -518,20 +518,34 @@
     const meta = document.createElement('div');
     meta.className = 'task-meta';
 
-    // Estimate chip
-    const estimateChip = document.createElement('span');
-    estimateChip.className = 'chip estimate';
-    estimateChip.textContent = formatEstimate(task.estimateMinutes);
-    estimateChip.addEventListener('click', () => cycleEstimate(task.id));
-    meta.appendChild(estimateChip);
-
-    // Tag chips
-    task.tags.forEach(tag => {
-      const tagChip = document.createElement('span');
-      tagChip.className = 'chip tag';
-      tagChip.textContent = `#${tag}`;
-      meta.appendChild(tagChip);
+    // Estimate dropdown
+    const estimateSelect = document.createElement('select');
+    estimateSelect.className = 'estimate-select';
+    const estimateOptions = [
+      { value: '', label: '—' },
+      { value: '5', label: '5m' },
+      { value: '15', label: '15m' },
+      { value: '30', label: '30m' },
+      { value: '60', label: '60m' }
+    ];
+    estimateOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if ((task.estimateMinutes === null && opt.value === '') ||
+        (task.estimateMinutes !== null && opt.value === String(task.estimateMinutes))) {
+        option.selected = true;
+      }
+      estimateSelect.appendChild(option);
     });
+    estimateSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      const newEstimate = val === '' ? null : parseInt(val, 10);
+      updateTask(selectedDate, task.id, { estimateMinutes: newEstimate });
+    });
+    meta.appendChild(estimateSelect);
+
+    // Tags removed - no longer displayed
 
     // Carried from chip
     if (task.carriedFrom) {
