@@ -834,6 +834,11 @@ input {
   .fab {
     right: calc(50% - 580px);
   }
+
+  /* Hide filter chips on wide screens */
+  .narrow-only {
+    display: none !important;
+  }
 }
 
 /* ===== Responsive: Narrow ===== */
@@ -858,4 +863,51 @@ input {
     bottom: 85px;
     right: 12px;
   }
+}
+
+/* ===== Narrow-only visibility (default hidden on wide) ===== */
+@media (min-width: 600px) {
+  .narrow-only {
+    display: none !important;
+  }
+}
+
+/* ===== Drop Zone Styles ===== */
+.task-list.drop-zone-active {
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: var(--radius-md);
+  min-height: 60px;
+}
+
+.task-list.drop-zone-highlight {
+  background: rgba(99, 102, 241, 0.1);
+  border: 2px dashed var(--accent-primary);
+  border-radius: var(--radius-md);
+}
+
+/* Drop Placeholder */
+.drop-placeholder {
+  height: 4px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  margin: var(--space-xs) 0;
+  transition: all var(--transition-fast);
+}
+
+/* Section highlight when dragging over */
+.task-section.drag-over-section {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.task-section[data-status="IN_PROGRESS"].drag-over-section {
+  outline-color: var(--status-progress);
+}
+
+.task-section[data-status="WAITING"].drag-over-section {
+  outline-color: var(--status-waiting);
+}
+
+.task-section[data-status="DONE"].drag-over-section {
+  outline-color: var(--status-done);
 }

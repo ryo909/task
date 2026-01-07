@@ -312,6 +312,37 @@
     await saveDayRecord(record);
   }
 
+  // Move task to different status and reorder
+  async function moveTaskToSection(date, taskId, newStatus, insertAtIndex) {
+    const record = await getDateRecord(date);
+    const task = record.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const oldStatus = task.status;
+    task.status = newStatus;
+
+    // Get all tasks in target status and sort by order
+    const targetTasks = record.tasks
+      .filter(t => t.status === newStatus && t.id !== taskId)
+      .sort((a, b) => a.order - b.order);
+
+    // Insert at position
+    targetTasks.splice(insertAtIndex, 0, task);
+
+    // Reassign order for target status
+    targetTasks.forEach((t, idx) => t.order = idx);
+
+    // Reassign order for old status if different
+    if (oldStatus !== newStatus) {
+      const oldTasks = record.tasks
+        .filter(t => t.status === oldStatus)
+        .sort((a, b) => a.order - b.order);
+      oldTasks.forEach((t, idx) => t.order = idx);
+    }
+
+    await saveDayRecord(record);
+  }
+
   // ===== Rollover Logic =====
   async function checkAndPerformRollover() {
     const today = getTodayString();
@@ -702,21 +733,39 @@
     input.select();
   }
 
-  // ===== Drag and Drop =====
+  // ===== Drag and Drop (Cross-Column Support) =====
   let draggedElement = null;
+  let draggedTaskId = null;
 
   function handleDragStart(e) {
     draggedElement = e.currentTarget;
+    draggedTaskId = e.currentTarget.dataset.id;
     e.currentTarget.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggedTaskId);
+
+    // Activate all drop zones
+    document.querySelectorAll('.task-list').forEach(list => {
+      list.classList.add('drop-zone-active');
+    });
   }
 
   function handleDragEnd(e) {
     e.currentTarget.classList.remove('dragging');
+    draggedElement = null;
+    draggedTaskId = null;
+
+    // Clear all highlights
     document.querySelectorAll('.task-card').forEach(el => {
       el.classList.remove('drag-over');
     });
-    draggedElement = null;
+    document.querySelectorAll('.task-list').forEach(list => {
+      list.classList.remove('drop-zone-active', 'drop-zone-highlight');
+    });
+    document.querySelectorAll('.task-section').forEach(sec => {
+      sec.classList.remove('drag-over-section');
+    });
+    document.querySelectorAll('.drop-placeholder').forEach(ph => ph.remove());
   }
 
   function handleDragOver(e) {
@@ -724,7 +773,7 @@
     e.dataTransfer.dropEffect = 'move';
 
     const target = e.currentTarget;
-    if (target !== draggedElement) {
+    if (target !== draggedElement && target.classList.contains('task-card')) {
       target.classList.add('drag-over');
     }
   }
@@ -733,6 +782,7 @@
     e.currentTarget.classList.remove('drag-over');
   }
 
+  // Handle drop on task card (reorder within or move across sections)
   function handleDrop(e) {
     e.preventDefault();
     const target = e.currentTarget;
@@ -740,25 +790,64 @@
 
     if (!draggedElement || target === draggedElement) return;
 
-    // Find the correct list
     const targetList = target.closest('.task-list');
     const draggedList = draggedElement.closest('.task-list');
+    const targetSection = targetList.closest('.task-section');
+    const newStatus = targetSection.dataset.status;
 
-    if (targetList !== draggedList) return; // Only reorder within same section
-
-    const cards = Array.from(targetList.querySelectorAll('.task-card'));
-    const draggedIndex = cards.indexOf(draggedElement);
+    // Get insert position
+    const cards = Array.from(targetList.querySelectorAll('.task-card:not(.dragging)'));
     const targetIndex = cards.indexOf(target);
 
-    if (draggedIndex < targetIndex) {
-      target.after(draggedElement);
+    if (targetList === draggedList) {
+      // Same section: simple reorder
+      const draggedIndex = cards.indexOf(draggedElement);
+      if (draggedIndex < targetIndex) {
+        target.after(draggedElement);
+      } else {
+        target.before(draggedElement);
+      }
+      const newOrder = Array.from(targetList.querySelectorAll('.task-card')).map(el => el.dataset.id);
+      reorderTasks(selectedDate, newOrder);
     } else {
-      target.before(draggedElement);
+      // Cross-section: move task
+      moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex).then(() => {
+        renderTasks();
+      });
     }
+  }
 
-    // Save new order
-    const newOrder = Array.from(targetList.querySelectorAll('.task-card')).map(el => el.dataset.id);
-    reorderTasks(selectedDate, newOrder);
+  // Handle drop on empty list area
+  function handleListDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const list = e.currentTarget;
+    list.classList.add('drop-zone-highlight');
+    list.closest('.task-section').classList.add('drag-over-section');
+  }
+
+  function handleListDragLeave(e) {
+    const list = e.currentTarget;
+    list.classList.remove('drop-zone-highlight');
+    list.closest('.task-section').classList.remove('drag-over-section');
+  }
+
+  function handleListDrop(e) {
+    e.preventDefault();
+    const list = e.currentTarget;
+    list.classList.remove('drop-zone-highlight');
+    list.closest('.task-section').classList.remove('drag-over-section');
+
+    if (!draggedTaskId) return;
+
+    const targetSection = list.closest('.task-section');
+    const newStatus = targetSection.dataset.status;
+    const cards = Array.from(list.querySelectorAll('.task-card:not(.dragging)'));
+
+    // Insert at end
+    moveTaskToSection(selectedDate, draggedTaskId, newStatus, cards.length).then(() => {
+      renderTasks();
+    });
   }
 
   // ===== Section Collapse =====
@@ -859,23 +948,16 @@
     }
   }
 
-  // ===== Demo Data =====
+  // ===== Demo Data (Minimal: 1 per status) =====
   async function insertDemoData() {
     const record = await getDateRecord(selectedDate);
+    // Don't insert if user already has any tasks
     if (record.tasks.length > 0) return;
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = formatDate(yesterday);
 
     const demoTasks = [
       { title: '提案資料の最終チェック', priority: 3, estimateMinutes: 30, tags: ['client', 'docs'], status: 'IN_PROGRESS' },
-      { title: 'Slack返信まとめ', priority: 2, estimateMinutes: 15, tags: ['comms'], status: 'IN_PROGRESS' },
-      { title: 'デザインレビュー依頼中', priority: 2, estimateMinutes: null, tags: ['design'], status: 'WAITING' },
-      { title: 'メール送付（請求書）', priority: 2, estimateMinutes: 15, tags: ['mail', 'finance'], status: 'WAITING', carriedFrom: yesterdayStr },
-      { title: 'MTGアジェンダ作成', priority: 3, estimateMinutes: 30, tags: ['meeting'], status: 'IN_PROGRESS' },
-      { title: '朝のストレッチ', priority: 1, estimateMinutes: 5, tags: ['health'], status: 'DONE' },
-      { title: '読書メモ整理', priority: 1, estimateMinutes: null, tags: ['reading'], status: 'DONE' }
+      { title: 'メール送付（請求書）', priority: 2, estimateMinutes: 15, tags: ['mail', 'finance'], status: 'WAITING' },
+      { title: '朝のストレッチ', priority: 1, estimateMinutes: 5, tags: ['health'], status: 'DONE' }
     ];
 
     const now = Date.now();
@@ -888,7 +970,7 @@
         estimateMinutes: task.estimateMinutes,
         tags: task.tags,
         createdAt: now - (index * 60000),
-        carriedFrom: task.carriedFrom || null,
+        carriedFrom: null,
         order: index
       });
     });
@@ -1000,6 +1082,13 @@
       header.addEventListener('click', (e) => {
         toggleSection(header.closest('.task-section'));
       });
+    });
+
+    // Event listeners - List drop zones (for empty area drops)
+    [elements.listInProgress, elements.listWaiting, elements.listDone].forEach(list => {
+      list.addEventListener('dragover', handleListDragOver);
+      list.addEventListener('dragleave', handleListDragLeave);
+      list.addEventListener('drop', handleListDrop);
     });
 
     // Visibility change listener
