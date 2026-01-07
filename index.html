@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <title>SideDock ToDo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="logo">SideDock ToDo</h1>
+      <time class="date" id="currentDate"></time>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="today">Today</button>
+      <button class="tab" data-tab="archive">Archive</button>
+    </nav>
+
+    <!-- Today View -->
+    <main class="view" id="todayView">
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-row">
+          <input 
+            type="text" 
+            class="task-input" 
+            id="taskInput" 
+            placeholder="例) 資料送付 30m #mail #cs"
+            autocomplete="off"
+          >
+          <button class="add-btn" id="addBtn" aria-label="タスクを追加">+</button>
+        </div>
+        <p class="privacy-note">このアプリはタスク本文を送信しません（ローカル保存）</p>
+      </div>
+
+      <!-- Task List -->
+      <ul class="task-list" id="taskList"></ul>
+
+      <!-- Summary Footer -->
+      <footer class="summary" id="summary">
+        <div class="summary-item">
+          <span class="summary-label">未完了</span>
+          <span class="summary-value" id="incompleteCount">0件</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">残り</span>
+          <span class="summary-value" id="remainingTime">—</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">合計</span>
+          <span class="summary-value" id="totalTime">—</span>
+        </div>
+      </footer>
+    </main>
+
+    <!-- Archive View -->
+    <main class="view hidden" id="archiveView">
+      <div class="archive-header">
+        <div class="date-chips" id="dateChips"></div>
+        <button class="restore-btn" id="restoreBtn">未完了を今日へ復活</button>
+      </div>
+      <ul class="task-list" id="archiveTaskList"></ul>
+    </main>
+
+    <!-- Data Management Footer -->
+    <footer class="data-footer">
+      <button class="data-btn" id="exportBtn">Export</button>
+      <button class="data-btn" id="importBtn">Import</button>
+      <button class="data-btn danger" id="panicBtn">全消去</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
