@@ -1,81 +1,133 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
   <title>SideDock ToDo</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div class="app">
     <!-- Header -->
     <header class="header">
-      <h1 class="logo">SideDock ToDo</h1>
-      <time class="date" id="currentDate"></time>
+      <div class="header-left">
+        <span class="header-date" id="headerDate">今日</span>
+        <h1 class="header-title">私のタスク</h1>
+      </div>
+      <button class="header-icon" id="settingsBtn" aria-label="設定">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+          </path>
+        </svg>
+      </button>
     </header>
 
-    <!-- Tabs -->
-    <nav class="tabs">
-      <button class="tab active" data-tab="today">Today</button>
-      <button class="tab" data-tab="archive">Archive</button>
+    <!-- Filter Chips -->
+    <nav class="filter-chips" id="filterChips">
+      <button class="filter-chip active" data-filter="all">すべて</button>
+      <button class="filter-chip" data-filter="IN_PROGRESS">進行中</button>
+      <button class="filter-chip" data-filter="WAITING">待ち</button>
+      <button class="filter-chip" data-filter="DONE">完了</button>
     </nav>
 
-    <!-- Today View -->
-    <main class="view" id="todayView">
-      <!-- Input Area -->
-      <div class="input-area">
-        <div class="input-row">
-          <input 
-            type="text" 
-            class="task-input" 
-            id="taskInput" 
-            placeholder="例) 資料送付 30m #mail #cs"
-            autocomplete="off"
-          >
-          <button class="add-btn" id="addBtn" aria-label="タスクを追加">+</button>
-        </div>
-        <p class="privacy-note">このアプリはタスク本文を送信しません（ローカル保存）</p>
+    <!-- Privacy Note -->
+    <p class="privacy-note">このアプリはタスク本文を送信しません（ローカル保存）</p>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Sections Container (for responsive 3-column) -->
+      <div class="sections-container" id="sectionsContainer">
+        <!-- In Progress Section -->
+        <section class="task-section" data-status="IN_PROGRESS">
+          <button class="section-header" data-collapsed="false">
+            <span class="section-toggle">▼</span>
+            <span class="section-title">進行中</span>
+            <span class="section-count" id="countInProgress">0</span>
+          </button>
+          <ul class="task-list" id="listInProgress"></ul>
+        </section>
+
+        <!-- Waiting Section -->
+        <section class="task-section" data-status="WAITING">
+          <button class="section-header" data-collapsed="false">
+            <span class="section-toggle">▼</span>
+            <span class="section-title">承認・返信待ち</span>
+            <span class="section-count" id="countWaiting">0</span>
+          </button>
+          <ul class="task-list" id="listWaiting"></ul>
+        </section>
+
+        <!-- Done Section -->
+        <section class="task-section" data-status="DONE">
+          <button class="section-header" data-collapsed="false">
+            <span class="section-toggle">▼</span>
+            <span class="section-title">完了</span>
+            <span class="section-count" id="countDone">0</span>
+          </button>
+          <ul class="task-list" id="listDone"></ul>
+        </section>
       </div>
-
-      <!-- Task List -->
-      <ul class="task-list" id="taskList"></ul>
-
-      <!-- Summary Footer -->
-      <footer class="summary" id="summary">
-        <div class="summary-item">
-          <span class="summary-label">未完了</span>
-          <span class="summary-value" id="incompleteCount">0件</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">残り</span>
-          <span class="summary-value" id="remainingTime">—</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">合計</span>
-          <span class="summary-value" id="totalTime">—</span>
-        </div>
-      </footer>
     </main>
 
-    <!-- Archive View -->
-    <main class="view hidden" id="archiveView">
-      <div class="archive-header">
-        <div class="date-chips" id="dateChips"></div>
-        <button class="restore-btn" id="restoreBtn">未完了を今日へ復活</button>
-      </div>
-      <ul class="task-list" id="archiveTaskList"></ul>
-    </main>
+    <!-- Date Strip -->
+    <nav class="date-strip" id="dateStrip"></nav>
 
-    <!-- Data Management Footer -->
-    <footer class="data-footer">
-      <button class="data-btn" id="exportBtn">Export</button>
-      <button class="data-btn" id="importBtn">Import</button>
-      <button class="data-btn danger" id="panicBtn">全消去</button>
-      <input type="file" id="importFile" accept=".json" hidden>
-    </footer>
+    <!-- Floating Add Button -->
+    <button class="fab" id="fabAdd" aria-label="タスクを追加">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+
+    <!-- Add Task Modal -->
+    <div class="modal-overlay hidden" id="addModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">タスクを追加</h2>
+          <button class="modal-close" id="modalClose">×</button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="task-input" id="taskInput" placeholder="例) 資料送付 30m #mail #cs" autocomplete="off">
+          <p class="input-hint">時間は 5m/15m/30m/60m、タグは #xxx で入力</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modalCancel">キャンセル</button>
+          <button class="btn btn-primary" id="modalAdd">追加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="modal-overlay hidden" id="settingsModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">設定</h2>
+          <button class="modal-close" id="settingsClose">×</button>
+        </div>
+        <div class="modal-body settings-body">
+          <button class="settings-btn" id="exportBtn">
+            <span>📤</span> データをエクスポート
+          </button>
+          <button class="settings-btn" id="importBtn">
+            <span>📥</span> データをインポート
+          </button>
+          <button class="settings-btn danger" id="panicBtn">
+            <span>🗑️</span> 全データを削除
+          </button>
+          <input type="file" id="importFile" accept=".json" hidden>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
 </body>
+
 </html>
