@@ -8,10 +8,13 @@
 
   // ===== Constants =====
   const DB_NAME = 'SideDockToDo';
-  const DB_VERSION = 3; // v3: Add sessions store
+  const DB_VERSION = 4; // v4: Add notes, logs, petState stores
   const STORE_DAYS = 'days';
   const STORE_META = 'meta';
   const STORE_SESSIONS = 'sessions';
+  const STORE_NOTES = 'notes';
+  const STORE_LOGS = 'logs';
+  const STORE_PET = 'petState';
   const ARCHIVE_DAYS = 7;
 
   const ESTIMATE_VALUES = [null, 5, 15, 30, 60];
@@ -166,6 +169,20 @@
         if (!database.objectStoreNames.contains(STORE_SESSIONS)) {
           database.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
         }
+
+        // v4: Add notes, logs, petState stores
+        if (!database.objectStoreNames.contains(STORE_NOTES)) {
+          database.createObjectStore(STORE_NOTES, { keyPath: 'id' });
+        }
+
+        if (!database.objectStoreNames.contains(STORE_LOGS)) {
+          const logsStore = database.createObjectStore(STORE_LOGS, { keyPath: 'id' });
+          logsStore.createIndex('dateKey', 'dateKey', { unique: false });
+        }
+
+        if (!database.objectStoreNames.contains(STORE_PET)) {
+          database.createObjectStore(STORE_PET, { keyPath: 'id' });
+        }
       };
     });
   }
@@ -239,10 +256,13 @@
 
   function clearAllData() {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction([STORE_DAYS, STORE_META, STORE_SESSIONS], 'readwrite');
+      const tx = db.transaction([STORE_DAYS, STORE_META, STORE_SESSIONS, STORE_NOTES, STORE_LOGS, STORE_PET], 'readwrite');
       tx.objectStore(STORE_DAYS).clear();
       tx.objectStore(STORE_META).clear();
       tx.objectStore(STORE_SESSIONS).clear();
+      tx.objectStore(STORE_NOTES).clear();
+      tx.objectStore(STORE_LOGS).clear();
+      tx.objectStore(STORE_PET).clear();
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -279,6 +299,140 @@
     return getSessionsForDate(getTodayString());
   }
 
+  // ===== Notes Functions =====
+  function getAllNotes() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NOTES, 'readonly');
+      const store = tx.objectStore(STORE_NOTES);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function saveNote(note) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NOTES, 'readwrite');
+      const store = tx.objectStore(STORE_NOTES);
+      note.updatedAt = Date.now();
+      const request = store.put(note);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function deleteNote(noteId) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NOTES, 'readwrite');
+      const store = tx.objectStore(STORE_NOTES);
+      const request = store.delete(noteId);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // ===== Logs Functions =====
+  function saveLogEntry(entry) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_LOGS, 'readwrite');
+      const store = tx.objectStore(STORE_LOGS);
+      const request = store.put(entry);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function getLogsForDate(dateKey) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_LOGS, 'readonly');
+      const store = tx.objectStore(STORE_LOGS);
+      const index = store.index('dateKey');
+      const request = index.getAll(dateKey);
+
+      request.onsuccess = () => {
+        const logs = request.result || [];
+        resolve(logs.sort((a, b) => b.doneAt - a.doneAt));
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function deleteLogEntry(logId) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_LOGS, 'readwrite');
+      const store = tx.objectStore(STORE_LOGS);
+      const request = store.delete(logId);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function getLogsByTaskId(taskId) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_LOGS, 'readonly');
+      const store = tx.objectStore(STORE_LOGS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const logs = (request.result || []).filter(l => l.taskId === taskId);
+        resolve(logs.sort((a, b) => b.doneAt - a.doneAt));
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // ===== Pet State Functions =====
+  function getPetState() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_PET, 'readonly');
+      const store = tx.objectStore(STORE_PET);
+      const request = store.get('pet');
+
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result);
+        } else {
+          // Return default pet state
+          resolve({
+            id: 'pet',
+            name: 'ねこまんじゅう',
+            level: 1,
+            xp: 0,
+            treats: 0,
+            mood: 'normal',
+            lastInteractionAt: null,
+            lastRewardAt: null,
+            skin: 'default'
+          });
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function savePetState(petState) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_PET, 'readwrite');
+      const store = tx.objectStore(STORE_PET);
+      petState.id = 'pet';
+      const request = store.put(petState);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // ===== Helper: Get local dateKey =====
+  function getLocalDateKey(timestamp = Date.now()) {
+    const date = new Date(timestamp);
+    return formatDate(date);
+  }
+
   // ===== Data Migration =====
   async function migrateData() {
     const allRecords = await getAllDayRecords();
@@ -299,6 +453,24 @@
           task.status = 'IN_PROGRESS';
           needsSave = true;
         }
+
+        // v4: Add extended fields if missing
+        if (!('dueDate' in task)) {
+          task.dueDate = null;
+          needsSave = true;
+        }
+        if (!('note' in task)) {
+          task.note = '';
+          needsSave = true;
+        }
+        if (!('subtasks' in task)) {
+          task.subtasks = [];
+          needsSave = true;
+        }
+        if (!('updatedAt' in task)) {
+          task.updatedAt = task.createdAt || Date.now();
+          needsSave = true;
+        }
       }
 
       if (needsSave) {
@@ -316,9 +488,10 @@
     return record;
   }
 
-  async function addTask(title, tags, estimate, date) {
+  async function addTask(title, tags, estimate, date, dueDate = null) {
     const record = await getDateRecord(date);
     const maxOrder = record.tasks.reduce((max, t) => Math.max(max, t.order), -1);
+    const now = Date.now();
 
     const task = {
       id: generateId(),
@@ -327,9 +500,14 @@
       priority: 1,
       estimateMinutes: estimate,
       tags,
-      createdAt: Date.now(),
+      createdAt: now,
       carriedFrom: null,
-      order: maxOrder + 1
+      order: maxOrder + 1,
+      // v4 extended fields
+      dueDate: dueDate,
+      note: '',
+      subtasks: [],
+      updatedAt: now
     };
 
     record.tasks.push(task);
@@ -548,11 +726,39 @@
     title.addEventListener('dblclick', () => startEditing(task.id, title));
     row.appendChild(title);
 
+    // Due date badge
+    if (task.dueDate) {
+      const today = getTodayString();
+      const dueBadge = document.createElement('span');
+      dueBadge.className = 'due-badge';
+      if (task.dueDate < today) {
+        dueBadge.classList.add('overdue');
+        dueBadge.textContent = '期限切れ';
+      } else if (task.dueDate === today) {
+        dueBadge.classList.add('today');
+        dueBadge.textContent = '今日';
+      } else {
+        dueBadge.textContent = task.dueDate.slice(5); // MM-DD
+      }
+      row.appendChild(dueBadge);
+    }
+
     // Time badge
     const timeBadge = document.createElement('span');
     timeBadge.className = 'time-badge';
     timeBadge.textContent = formatTime(task.createdAt);
     row.appendChild(timeBadge);
+
+    // Edit button
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-btn';
+    editBtn.textContent = '✎';
+    editBtn.title = '詳細編集';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskDetail(task.id);
+    });
+    row.appendChild(editBtn);
 
     // Delete button
     const deleteBtn = document.createElement('button');
@@ -746,9 +952,20 @@
     const record = await getDateRecord(selectedDate);
     const task = record.tasks.find(t => t.id === taskId);
     if (task) {
+      const oldStatus = task.status;
       const currentIndex = STATUS_VALUES.indexOf(task.status);
       const nextIndex = (currentIndex + 1) % STATUS_VALUES.length;
-      await updateTask(selectedDate, taskId, { status: STATUS_VALUES[nextIndex] });
+      const newStatus = STATUS_VALUES[nextIndex];
+
+      await updateTask(selectedDate, taskId, { status: newStatus, updatedAt: Date.now() });
+
+      // Log handling
+      if (newStatus === 'DONE' && oldStatus !== 'DONE') {
+        await createDoneLog(task, selectedDate);
+      } else if (oldStatus === 'DONE' && newStatus !== 'DONE') {
+        await revertDoneLog(taskId);
+      }
+
       renderTasks();
     }
   }
@@ -1025,8 +1242,17 @@
     if (screen) screen.classList.remove('hidden');
     if (tab) tab.classList.add('active');
 
+    // Initialize screens
     if (screenName === 'focus') {
       initFocusScreen();
+    } else if (screenName === 'calendar') {
+      initCalendarScreen();
+    } else if (screenName === 'notes') {
+      initNotesScreen();
+    } else if (screenName === 'logs') {
+      initLogsScreen();
+    } else if (screenName === 'break') {
+      initBreakScreen();
     }
   }
 
@@ -1226,6 +1452,12 @@
         durationSeconds: duration
       };
       await saveSession(session);
+
+      // Award pet rewards
+      const durationMinutes = Math.floor(duration / 60);
+      if (durationMinutes > 0) {
+        await awardFocusReward(durationMinutes);
+      }
     }
 
     // Reset timer
@@ -1437,6 +1669,928 @@
     }
   }
 
+  // ===== Task Detail Modal =====
+  let detailTaskId = null;
+  let detailTaskDate = null;
+  let detailSubtasks = [];
+
+  function openTaskDetail(taskId, date = selectedDate) {
+    detailTaskId = taskId;
+    detailTaskDate = date;
+
+    getDateRecord(date).then(record => {
+      const task = record.tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      document.getElementById('detailTitle').value = task.title;
+      document.getElementById('detailDueDate').value = task.dueDate || '';
+      document.getElementById('detailEstimate').value = task.estimateMinutes || '';
+      document.getElementById('detailNote').value = task.note || '';
+      detailSubtasks = [...(task.subtasks || [])];
+      renderSubtaskList();
+
+      document.getElementById('taskDetailModal').classList.remove('hidden');
+      document.getElementById('detailTitle').focus();
+    });
+  }
+
+  function closeTaskDetail() {
+    document.getElementById('taskDetailModal').classList.add('hidden');
+    detailTaskId = null;
+    detailTaskDate = null;
+    detailSubtasks = [];
+  }
+
+  function renderSubtaskList() {
+    const list = document.getElementById('subtaskList');
+    while (list.firstChild) list.removeChild(list.firstChild);
+
+    detailSubtasks.sort((a, b) => a.order - b.order).forEach(st => {
+      const li = document.createElement('li');
+      li.className = 'subtask-item' + (st.done ? ' done' : '');
+      li.dataset.id = st.id;
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'subtask-checkbox';
+      checkbox.checked = st.done;
+      checkbox.addEventListener('change', () => {
+        st.done = checkbox.checked;
+        li.classList.toggle('done', st.done);
+      });
+
+      const text = document.createElement('span');
+      text.className = 'subtask-text';
+      text.textContent = st.text;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'subtask-delete';
+      deleteBtn.textContent = '×';
+      deleteBtn.addEventListener('click', () => {
+        detailSubtasks = detailSubtasks.filter(s => s.id !== st.id);
+        renderSubtaskList();
+      });
+
+      li.appendChild(checkbox);
+      li.appendChild(text);
+      li.appendChild(deleteBtn);
+      list.appendChild(li);
+    });
+  }
+
+  function addSubtask() {
+    const input = document.getElementById('subtaskInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const maxOrder = detailSubtasks.reduce((max, s) => Math.max(max, s.order), -1);
+    detailSubtasks.push({
+      id: generateId(),
+      text,
+      done: false,
+      order: maxOrder + 1
+    });
+    input.value = '';
+    renderSubtaskList();
+  }
+
+  async function saveTaskDetail() {
+    if (!detailTaskId) return;
+
+    const updates = {
+      title: document.getElementById('detailTitle').value.trim() || '（無題）',
+      dueDate: document.getElementById('detailDueDate').value || null,
+      estimateMinutes: document.getElementById('detailEstimate').value ? parseInt(document.getElementById('detailEstimate').value) : null,
+      note: document.getElementById('detailNote').value,
+      subtasks: detailSubtasks,
+      updatedAt: Date.now()
+    };
+
+    await updateTask(detailTaskDate, detailTaskId, updates);
+    closeTaskDetail();
+    renderTasks();
+  }
+
+  async function deleteTaskFromDetail() {
+    if (!detailTaskId) return;
+    await deleteTask(detailTaskDate, detailTaskId);
+    closeTaskDetail();
+    renderTasks();
+  }
+
+  // ===== Toast Notifications =====
+  let undoAction = null;
+
+  function showToast(message, canUndo = false) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'toast-message';
+    msgSpan.textContent = message;
+    toast.appendChild(msgSpan);
+
+    if (canUndo && undoAction) {
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'toast-undo';
+      undoBtn.textContent = '元に戻す';
+      undoBtn.addEventListener('click', async () => {
+        if (undoAction) {
+          await undoAction();
+          undoAction = null;
+          toast.remove();
+          renderTasks();
+          if (currentScreen === 'calendar') renderCalendar();
+        }
+      });
+      toast.appendChild(undoBtn);
+    }
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('hiding');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  // ===== Search =====
+  function openSearchModal() {
+    document.getElementById('searchModal').classList.remove('hidden');
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchInput').focus();
+    clearSearchResults();
+  }
+
+  function closeSearchModal() {
+    document.getElementById('searchModal').classList.add('hidden');
+    clearSearchResults();
+  }
+
+  function clearSearchResults() {
+    const list = document.getElementById('searchResults');
+    while (list.firstChild) list.removeChild(list.firstChild);
+  }
+
+  async function performSearch(query) {
+    if (!query || query.length < 2) {
+      clearSearchResults();
+      return;
+    }
+
+    const queryLower = query.toLowerCase();
+    const allRecords = await getAllDayRecords();
+    const results = [];
+
+    for (const record of allRecords) {
+      for (const task of record.tasks) {
+        let matchType = null;
+        if (task.title.toLowerCase().includes(queryLower)) {
+          matchType = 'タイトル';
+        } else if (task.note && task.note.toLowerCase().includes(queryLower)) {
+          matchType = 'メモ';
+        } else if (task.subtasks && task.subtasks.some(s => s.text.toLowerCase().includes(queryLower))) {
+          matchType = 'サブタスク';
+        }
+
+        if (matchType) {
+          results.push({
+            date: record.date,
+            taskId: task.id,
+            title: task.title,
+            matchType
+          });
+        }
+      }
+    }
+
+    // Sort by date (newest first)
+    results.sort((a, b) => b.date.localeCompare(a.date));
+
+    renderSearchResults(results);
+  }
+
+  function renderSearchResults(results) {
+    const list = document.getElementById('searchResults');
+    while (list.firstChild) list.removeChild(list.firstChild);
+
+    if (results.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '結果が見つかりませんでした';
+      list.appendChild(empty);
+      return;
+    }
+
+    results.slice(0, 20).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'search-result-item';
+      li.addEventListener('click', () => {
+        closeSearchModal();
+        selectDate(r.date);
+        setTimeout(() => openTaskDetail(r.taskId, r.date), 100);
+      });
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'search-result-date';
+      dateSpan.textContent = r.date;
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'search-result-title';
+      titleSpan.textContent = r.title;
+
+      const matchSpan = document.createElement('span');
+      matchSpan.className = 'search-result-match';
+      matchSpan.textContent = r.matchType;
+
+      li.appendChild(dateSpan);
+      li.appendChild(titleSpan);
+      li.appendChild(matchSpan);
+      list.appendChild(li);
+    });
+  }
+
+  // ===== Calendar =====
+  let calendarYear = new Date().getFullYear();
+  let calendarMonth = new Date().getMonth();
+  let dueDateCache = {};
+
+  async function initCalendarScreen() {
+    await buildDueDateCache();
+    renderCalendar();
+  }
+
+  async function buildDueDateCache() {
+    dueDateCache = {};
+    const allRecords = await getAllDayRecords();
+    for (const record of allRecords) {
+      for (const task of record.tasks) {
+        if (task.dueDate && task.status !== 'DONE') {
+          if (!dueDateCache[task.dueDate]) {
+            dueDateCache[task.dueDate] = [];
+          }
+          dueDateCache[task.dueDate].push({ ...task, sourceDate: record.date });
+        }
+      }
+    }
+  }
+
+  function renderCalendar() {
+    const title = document.getElementById('calendarTitle');
+    title.textContent = `${calendarYear}年${calendarMonth + 1}月`;
+
+    const daysContainer = document.getElementById('calendarDays');
+    while (daysContainer.firstChild) daysContainer.removeChild(daysContainer.firstChild);
+
+    const firstDay = new Date(calendarYear, calendarMonth, 1);
+    const lastDay = new Date(calendarYear, calendarMonth + 1, 0);
+    const startDayOfWeek = firstDay.getDay();
+    const today = getTodayString();
+
+    // Previous month fill
+    const prevMonthEnd = new Date(calendarYear, calendarMonth, 0);
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const day = prevMonthEnd.getDate() - i;
+      const dateKey = formatDate(new Date(calendarYear, calendarMonth - 1, day));
+      createCalendarDay(daysContainer, day, dateKey, true, today);
+    }
+
+    // Current month
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      const dateKey = formatDate(new Date(calendarYear, calendarMonth, day));
+      createCalendarDay(daysContainer, day, dateKey, false, today);
+    }
+
+    // Next month fill
+    const remaining = 42 - daysContainer.children.length;
+    for (let day = 1; day <= remaining; day++) {
+      const dateKey = formatDate(new Date(calendarYear, calendarMonth + 1, day));
+      createCalendarDay(daysContainer, day, dateKey, true, today);
+    }
+  }
+
+  function createCalendarDay(container, dayNum, dateKey, otherMonth, today) {
+    const div = document.createElement('div');
+    div.className = 'calendar-day';
+    if (otherMonth) div.classList.add('other-month');
+    if (dateKey === today) div.classList.add('today');
+
+    const numSpan = document.createElement('span');
+    numSpan.textContent = dayNum;
+    div.appendChild(numSpan);
+
+    const dueTasks = dueDateCache[dateKey] || [];
+    if (dueTasks.length > 0) {
+      div.classList.add('has-due');
+      const countSpan = document.createElement('span');
+      countSpan.className = 'due-count';
+      countSpan.textContent = `Due ${dueTasks.length}`;
+      div.appendChild(countSpan);
+    }
+
+    div.addEventListener('click', () => openDayPopup(dateKey, dueTasks));
+    container.appendChild(div);
+  }
+
+  function openDayPopup(dateKey, tasks) {
+    const popup = document.getElementById('dayPopup');
+    const dateSpan = document.getElementById('dayPopupDate');
+    const tasksList = document.getElementById('dayPopupTasks');
+
+    dateSpan.textContent = dateKey;
+    while (tasksList.firstChild) tasksList.removeChild(tasksList.firstChild);
+
+    if (tasks.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '期限のタスクはありません';
+      tasksList.appendChild(empty);
+    } else {
+      tasks.forEach(task => {
+        const li = document.createElement('li');
+        li.className = 'day-popup-task';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'day-popup-task-title';
+        titleSpan.textContent = task.title;
+        titleSpan.addEventListener('click', () => {
+          closeDayPopup();
+          selectDate(task.sourceDate);
+          setTimeout(() => openTaskDetail(task.id, task.sourceDate), 100);
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'day-popup-task-actions';
+
+        const nextWeekBtn = document.createElement('button');
+        nextWeekBtn.className = 'postpone-btn';
+        nextWeekBtn.textContent = '来週へ';
+        nextWeekBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          postponeTask(task, 7);
+        });
+
+        const nextMondayBtn = document.createElement('button');
+        nextMondayBtn.className = 'postpone-btn';
+        nextMondayBtn.textContent = '来週月曜';
+        nextMondayBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          postponeToNextMonday(task);
+        });
+
+        actions.appendChild(nextWeekBtn);
+        actions.appendChild(nextMondayBtn);
+        li.appendChild(titleSpan);
+        li.appendChild(actions);
+        tasksList.appendChild(li);
+      });
+    }
+
+    popup.dataset.dateKey = dateKey;
+    popup.classList.remove('hidden');
+  }
+
+  function closeDayPopup() {
+    document.getElementById('dayPopup').classList.add('hidden');
+  }
+
+  async function postponeTask(task, days) {
+    const oldDueDate = task.dueDate;
+    const oldDate = new Date(task.dueDate);
+    oldDate.setDate(oldDate.getDate() + days);
+    const newDueDate = formatDate(oldDate);
+
+    undoAction = async () => {
+      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+    };
+
+    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast(`期限を ${newDueDate} に変更しました`, true);
+  }
+
+  async function postponeToNextMonday(task) {
+    const oldDueDate = task.dueDate;
+    const current = new Date(task.dueDate);
+    const dayOfWeek = current.getDay();
+    const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
+    current.setDate(current.getDate() + daysUntilMonday);
+    const newDueDate = formatDate(current);
+
+    undoAction = async () => {
+      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+    };
+
+    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast(`期限を ${newDueDate} に変更しました`, true);
+  }
+
+  async function addTaskFromCalendar() {
+    const dateKey = document.getElementById('dayPopup').dataset.dateKey;
+    if (!dateKey) return;
+
+    const title = prompt('タスク名を入力:');
+    if (!title || !title.trim()) return;
+
+    await addTask(title.trim(), [], null, selectedDate, dateKey);
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast('タスクを追加しました');
+  }
+
+  // ===== Notes =====
+  let noteSaveTimers = {};
+
+  async function initNotesScreen() {
+    await renderNotes();
+  }
+
+  async function renderNotes() {
+    const notes = await getAllNotes();
+    notes.sort((a, b) => a.createdAt - b.createdAt);
+
+    const container = document.getElementById('notesContainer');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (notes.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'メモがありません';
+      container.appendChild(empty);
+      return;
+    }
+
+    notes.forEach(note => {
+      container.appendChild(createNoteCard(note));
+    });
+  }
+
+  function createNoteCard(note) {
+    const card = document.createElement('div');
+    card.className = 'note-card' + (note.collapsed ? ' collapsed' : '');
+    card.dataset.id = note.id;
+
+    const header = document.createElement('div');
+    header.className = 'note-header';
+
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'note-collapse-btn';
+    collapseBtn.textContent = note.collapsed ? '▸' : '▾';
+    collapseBtn.addEventListener('click', () => toggleNoteCollapse(note.id, card, collapseBtn));
+
+    const titleInput = document.createElement('input');
+    titleInput.className = 'note-title-input';
+    titleInput.type = 'text';
+    titleInput.value = note.title;
+    titleInput.placeholder = '無題のメモ';
+    titleInput.addEventListener('input', () => debounceSaveNote(note.id));
+    titleInput.addEventListener('blur', () => saveNoteNow(note.id));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'note-delete-btn';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.addEventListener('click', () => confirmDeleteNote(note.id));
+
+    header.appendChild(collapseBtn);
+    header.appendChild(titleInput);
+    header.appendChild(deleteBtn);
+
+    const body = document.createElement('div');
+    body.className = 'note-body';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'note-textarea';
+    textarea.value = note.body;
+    textarea.placeholder = 'メモを入力...';
+    textarea.addEventListener('input', () => debounceSaveNote(note.id));
+    textarea.addEventListener('blur', () => saveNoteNow(note.id));
+
+    body.appendChild(textarea);
+    card.appendChild(header);
+    card.appendChild(body);
+
+    return card;
+  }
+
+  async function addNewNote() {
+    const note = {
+      id: generateId(),
+      title: '',
+      body: '',
+      collapsed: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    await saveNote(note);
+    await renderNotes();
+
+    // Focus new note's title
+    const lastCard = document.querySelector('.notes-container .note-card:last-child');
+    if (lastCard) {
+      const titleInput = lastCard.querySelector('.note-title-input');
+      if (titleInput) titleInput.focus();
+    }
+  }
+
+  function debounceSaveNote(noteId) {
+    if (noteSaveTimers[noteId]) clearTimeout(noteSaveTimers[noteId]);
+    noteSaveTimers[noteId] = setTimeout(() => saveNoteNow(noteId), 500);
+  }
+
+  async function saveNoteNow(noteId) {
+    if (noteSaveTimers[noteId]) {
+      clearTimeout(noteSaveTimers[noteId]);
+      delete noteSaveTimers[noteId];
+    }
+
+    const card = document.querySelector(`.note-card[data-id="${noteId}"]`);
+    if (!card) return;
+
+    const titleInput = card.querySelector('.note-title-input');
+    const textarea = card.querySelector('.note-textarea');
+    const isCollapsed = card.classList.contains('collapsed');
+
+    const notes = await getAllNotes();
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+
+    note.title = titleInput.value;
+    note.body = textarea.value;
+    note.collapsed = isCollapsed;
+
+    await saveNote(note);
+  }
+
+  async function toggleNoteCollapse(noteId, card, btn) {
+    const isCollapsed = card.classList.toggle('collapsed');
+    btn.textContent = isCollapsed ? '▸' : '▾';
+
+    const notes = await getAllNotes();
+    const note = notes.find(n => n.id === noteId);
+    if (note) {
+      note.collapsed = isCollapsed;
+      await saveNote(note);
+    }
+  }
+
+  async function confirmDeleteNote(noteId) {
+    if (confirm('このメモを削除しますか？')) {
+      await deleteNote(noteId);
+      await renderNotes();
+    }
+  }
+
+  // ===== Logs =====
+  let logsDateKey = getTodayString();
+
+  async function initLogsScreen() {
+    logsDateKey = getTodayString();
+    await renderLogs();
+  }
+
+  async function renderLogs() {
+    const dateDisplay = document.getElementById('logsDate');
+    dateDisplay.textContent = logsDateKey === getTodayString() ? '今日' : logsDateKey;
+
+    const logs = await getLogsForDate(logsDateKey);
+    const validLogs = logs.filter(l => l.type === 'taskDone');
+
+    // Summary
+    document.getElementById('logsCompletedCount').textContent = validLogs.length;
+    const totalEstimate = validLogs.reduce((sum, l) => sum + (l.estimateMinutesSnapshot || 0), 0);
+    document.getElementById('logsEstimateTotal').textContent = totalEstimate;
+
+    // List
+    const list = document.getElementById('logsList');
+    while (list.firstChild) list.removeChild(list.firstChild);
+
+    if (validLogs.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '完了したタスクはありません';
+      list.appendChild(empty);
+      return;
+    }
+
+    validLogs.forEach(log => {
+      const li = document.createElement('li');
+      li.className = 'log-item';
+      li.addEventListener('click', () => tryOpenLogTask(log));
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = formatTime(log.doneAt);
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'log-title';
+      titleSpan.textContent = log.titleSnapshot;
+
+      li.appendChild(timeSpan);
+      li.appendChild(titleSpan);
+
+      if (log.estimateMinutesSnapshot) {
+        const estSpan = document.createElement('span');
+        estSpan.className = 'log-estimate';
+        estSpan.textContent = log.estimateMinutesSnapshot + 'm';
+        li.appendChild(estSpan);
+      }
+
+      list.appendChild(li);
+    });
+  }
+
+  async function tryOpenLogTask(log) {
+    // Try to find the task
+    const allRecords = await getAllDayRecords();
+    for (const record of allRecords) {
+      const task = record.tasks.find(t => t.id === log.taskId);
+      if (task) {
+        openTaskDetail(task.id, record.date);
+        return;
+      }
+    }
+    showToast('このタスクは削除されています');
+  }
+
+  function changeLogsDate(delta) {
+    const current = new Date(logsDateKey);
+    current.setDate(current.getDate() + delta);
+    logsDateKey = formatDate(current);
+    renderLogs();
+  }
+
+  async function copyTodayLogs() {
+    const logs = await getLogsForDate(logsDateKey);
+    const validLogs = logs.filter(l => l.type === 'taskDone');
+
+    if (validLogs.length === 0) {
+      showToast('コピーするログがありません');
+      return;
+    }
+
+    const lines = validLogs.map(l => {
+      const time = formatTime(l.doneAt);
+      const est = l.estimateMinutesSnapshot ? ` (${l.estimateMinutesSnapshot}m)` : '';
+      return `${time} ${l.titleSnapshot}${est}`;
+    });
+
+    const text = `${logsDateKey} 完了ログ\n` + lines.join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('ログをクリップボードにコピーしました');
+    } catch {
+      showToast('コピーに失敗しました');
+    }
+  }
+
+  // ===== Log Entry Creation (hook into status change) =====
+  async function createDoneLog(task, date) {
+    const now = Date.now();
+    const entry = {
+      id: generateId(),
+      dateKey: getLocalDateKey(now),
+      type: 'taskDone',
+      taskId: task.id,
+      titleSnapshot: task.title,
+      estimateMinutesSnapshot: task.estimateMinutes,
+      doneAt: now
+    };
+    await saveLogEntry(entry);
+
+    // Award pet XP
+    const petState = await getPetState();
+    petState.xp += 2;
+    await savePetState(petState);
+  }
+
+  async function revertDoneLog(taskId) {
+    const logs = await getLogsByTaskId(taskId);
+    const latestDone = logs.find(l => l.type === 'taskDone');
+    if (latestDone) {
+      await deleteLogEntry(latestDone.id);
+    }
+  }
+
+  // ===== Break / Pet =====
+  let petState = null;
+
+  const PET_MESSAGES = {
+    normal: ['にゃー', 'むにゃ...', '...zzz', 'ん？'],
+    happy: ['にゃん！', 'うれしい♪', 'ありがとう！', 'もふもふ'],
+    sleepy: ['ふあぁ...', 'ねむい...', 'おやすみ...']
+  };
+
+  const PET_SVG = `<svg class="pet-svg" viewBox="0 0 100 100">
+    <defs>
+      <radialGradient id="bodyGrad" cx="50%" cy="40%" r="50%">
+        <stop offset="0%" stop-color="#fff5eb"/>
+        <stop offset="100%" stop-color="#ffd9b3"/>
+      </radialGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.2"/>
+      </filter>
+    </defs>
+    <g class="body" filter="url(#shadow)">
+      <!-- Body -->
+      <ellipse cx="50" cy="60" rx="35" ry="28" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
+      <!-- Ears -->
+      <polygon points="22,35 30,55 15,50" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
+      <polygon points="78,35 70,55 85,50" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
+      <!-- Inner ears -->
+      <polygon points="24,40 28,50 20,48" fill="#ffc0a0"/>
+      <polygon points="76,40 72,50 80,48" fill="#ffc0a0"/>
+    </g>
+    <!-- Face -->
+    <g class="face">
+      <!-- Cheeks -->
+      <ellipse cx="30" cy="62" rx="8" ry="5" fill="#ffb8b8" opacity="0.4"/>
+      <ellipse cx="70" cy="62" rx="8" ry="5" fill="#ffb8b8" opacity="0.4"/>
+      <!-- Eyes -->
+      <g class="eyes">
+        <ellipse class="eye-left" cx="38" cy="55" rx="4" ry="5" fill="#3a3a3a"/>
+        <ellipse class="eye-right" cx="62" cy="55" rx="4" ry="5" fill="#3a3a3a"/>
+        <circle cx="37" cy="53" r="1.5" fill="white"/>
+        <circle cx="61" cy="53" r="1.5" fill="white"/>
+      </g>
+      <!-- Mouth -->
+      <path class="mouth" d="M45,68 Q50,72 55,68" fill="none" stroke="#3a3a3a" stroke-width="1.5" stroke-linecap="round"/>
+      <text class="mouth-omega" x="50" y="72" text-anchor="middle" font-size="8" fill="#3a3a3a" style="display:none">ω</text>
+    </g>
+  </svg>`;
+
+  async function initBreakScreen() {
+    petState = await getPetState();
+    renderPet();
+    renderPetStats();
+    await renderPetTodayStats();
+  }
+
+  function renderPet() {
+    const container = document.getElementById('petLargeContainer');
+    container.innerHTML = PET_SVG;
+
+    // Apply mood
+    applyPetMood(container, petState.mood);
+  }
+
+  function renderMiniPet() {
+    const miniPet = document.getElementById('miniPet');
+    miniPet.innerHTML = PET_SVG;
+
+    // Scale and apply mood
+    const svg = miniPet.querySelector('.pet-svg');
+    if (svg && petState) {
+      applyPetMood(miniPet, petState.mood);
+    }
+  }
+
+  function applyPetMood(container, mood) {
+    const eyes = container.querySelectorAll('.eye-left, .eye-right');
+    const mouth = container.querySelector('.mouth');
+    const mouthOmega = container.querySelector('.mouth-omega');
+
+    if (mood === 'happy') {
+      eyes.forEach(e => e.setAttribute('ry', '2')); // squint
+      if (mouth) mouth.style.display = 'none';
+      if (mouthOmega) mouthOmega.style.display = 'block';
+    } else if (mood === 'sleepy') {
+      eyes.forEach(e => e.setAttribute('ry', '1')); // closed
+      if (mouth) mouth.setAttribute('d', 'M45,68 Q50,66 55,68'); // flat
+    } else {
+      eyes.forEach(e => e.setAttribute('ry', '5'));
+      if (mouth) {
+        mouth.style.display = 'block';
+        mouth.setAttribute('d', 'M45,68 Q50,72 55,68');
+      }
+      if (mouthOmega) mouthOmega.style.display = 'none';
+    }
+  }
+
+  function renderPetStats() {
+    if (!petState) return;
+    document.getElementById('petLevel').textContent = petState.level;
+    document.getElementById('petXP').textContent = petState.xp;
+    document.getElementById('petTreats').textContent = petState.treats;
+
+    const moodLabels = { normal: 'ふつう', happy: 'うれしい', sleepy: 'ねむい' };
+    document.getElementById('petMood').textContent = moodLabels[petState.mood] || 'ふつう';
+  }
+
+  async function renderPetTodayStats() {
+    const sessions = await getTodaySessions();
+    const totalMinutes = Math.floor(sessions.reduce((sum, s) => sum + s.durationSeconds, 0) / 60);
+    document.getElementById('petTodayFocus').textContent = totalMinutes;
+
+    const logs = await getLogsForDate(getTodayString());
+    const doneCount = logs.filter(l => l.type === 'taskDone').length;
+    document.getElementById('petTodayDone').textContent = doneCount;
+  }
+
+  async function petThePet() {
+    if (!petState) petState = await getPetState();
+
+    petState.mood = 'happy';
+    petState.lastInteractionAt = Date.now();
+    await savePetState(petState);
+
+    renderPet();
+    renderPetStats();
+    bouncePet(document.getElementById('petLargeContainer'));
+    showPetBubble();
+
+    // Reset mood after a while
+    setTimeout(async () => {
+      if (petState.mood === 'happy') {
+        petState.mood = 'normal';
+        await savePetState(petState);
+        renderPet();
+        renderPetStats();
+      }
+    }, 5000);
+  }
+
+  async function giveTreat() {
+    if (!petState) petState = await getPetState();
+
+    if (petState.treats <= 0) {
+      showToast('おやつがありません！');
+      return;
+    }
+
+    petState.treats -= 1;
+    petState.mood = 'happy';
+    petState.lastInteractionAt = Date.now();
+    await savePetState(petState);
+
+    renderPet();
+    renderPetStats();
+    bouncePet(document.getElementById('petLargeContainer'));
+    showPetBubble();
+  }
+
+  function bouncePet(container) {
+    const svg = container.querySelector('.pet-svg');
+    if (svg) {
+      svg.classList.remove('bounce');
+      void svg.offsetWidth; // reflow
+      svg.classList.add('bounce');
+    }
+  }
+
+  function showPetBubble() {
+    const bubble = document.getElementById('miniPetBubble');
+    const messages = PET_MESSAGES[petState?.mood || 'normal'];
+    bubble.textContent = messages[Math.floor(Math.random() * messages.length)];
+    bubble.classList.remove('hidden');
+
+    // Clone to restart animation
+    const newBubble = bubble.cloneNode(true);
+    bubble.parentNode.replaceChild(newBubble, bubble);
+    newBubble.classList.remove('hidden');
+
+    setTimeout(() => newBubble.classList.add('hidden'), 2000);
+  }
+
+  function miniPetClick() {
+    if (!petState) return;
+    bouncePet(document.getElementById('miniPet'));
+    showPetBubble();
+  }
+
+  // ===== Award pet rewards from Focus =====
+  async function awardFocusReward(durationMinutes) {
+    if (!petState) petState = await getPetState();
+
+    const today = getTodayString();
+    const lastRewardDate = petState.lastRewardAt ? getLocalDateKey(petState.lastRewardAt) : null;
+
+    petState.xp += durationMinutes;
+
+    // Award treat once per session (check if already awarded today with at least 1 session)
+    if (lastRewardDate !== today && petState.treats < 10) {
+      petState.treats += 1;
+    }
+
+    petState.lastRewardAt = Date.now();
+
+    // Level up check (every 100 XP)
+    while (petState.xp >= petState.level * 100) {
+      petState.xp -= petState.level * 100;
+      petState.level += 1;
+    }
+
+    await savePetState(petState);
+  }
+
   // ===== Demo Data (Minimal: 1 per status) =====
   async function insertDemoData() {
     const record = await getDateRecord(selectedDate);
@@ -1613,6 +2767,83 @@
 
     // Focus settings button
     document.getElementById('focusSettingsBtn').addEventListener('click', openSettingsModal);
+
+    // Event listeners - Search
+    document.getElementById('searchBtn').addEventListener('click', openSearchModal);
+    document.getElementById('searchClose').addEventListener('click', closeSearchModal);
+    document.getElementById('searchModal').addEventListener('click', (e) => {
+      if (e.target.id === 'searchModal') closeSearchModal();
+    });
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      performSearch(e.target.value);
+    });
+
+    // Event listeners - Task Detail Modal
+    document.getElementById('taskDetailClose').addEventListener('click', closeTaskDetail);
+    document.getElementById('taskDetailModal').addEventListener('click', (e) => {
+      if (e.target.id === 'taskDetailModal') closeTaskDetail();
+    });
+    document.getElementById('taskDetailSave').addEventListener('click', saveTaskDetail);
+    document.getElementById('taskDetailDelete').addEventListener('click', deleteTaskFromDetail);
+    document.getElementById('detailDueDateClear').addEventListener('click', () => {
+      document.getElementById('detailDueDate').value = '';
+    });
+    document.getElementById('subtaskAddBtn').addEventListener('click', addSubtask);
+    document.getElementById('subtaskInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addSubtask();
+      }
+    });
+
+    // Event listeners - Calendar
+    document.getElementById('calendarPrev').addEventListener('click', () => {
+      calendarMonth--;
+      if (calendarMonth < 0) {
+        calendarMonth = 11;
+        calendarYear--;
+      }
+      renderCalendar();
+    });
+    document.getElementById('calendarNext').addEventListener('click', () => {
+      calendarMonth++;
+      if (calendarMonth > 11) {
+        calendarMonth = 0;
+        calendarYear++;
+      }
+      renderCalendar();
+    });
+    document.getElementById('calendarToday').addEventListener('click', () => {
+      const today = new Date();
+      calendarYear = today.getFullYear();
+      calendarMonth = today.getMonth();
+      renderCalendar();
+    });
+    document.getElementById('dayPopupClose').addEventListener('click', closeDayPopup);
+    document.getElementById('dayPopupAddTask').addEventListener('click', addTaskFromCalendar);
+
+    // Event listeners - Notes
+    document.getElementById('addNoteBtn').addEventListener('click', addNewNote);
+
+    // Event listeners - Logs
+    document.getElementById('logsPrev').addEventListener('click', () => changeLogsDate(-1));
+    document.getElementById('logsNext').addEventListener('click', () => changeLogsDate(1));
+    document.getElementById('logsToday').addEventListener('click', () => {
+      logsDateKey = getTodayString();
+      renderLogs();
+    });
+    document.getElementById('logsCopyBtn').addEventListener('click', copyTodayLogs);
+
+    // Event listeners - Break / Pet
+    document.getElementById('petPetBtn').addEventListener('click', petThePet);
+    document.getElementById('petTreatBtn').addEventListener('click', giveTreat);
+    document.getElementById('miniPet').addEventListener('click', miniPetClick);
+
+    // Initialize mini pet
+    getPetState().then(state => {
+      petState = state;
+      renderMiniPet();
+    });
 
     // Visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);

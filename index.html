@@ -16,6 +16,10 @@
     <nav class="screen-nav">
       <button class="screen-tab active" data-screen="tasks">Tasks</button>
       <button class="screen-tab" data-screen="focus">Focus</button>
+      <button class="screen-tab" data-screen="calendar">Calendar</button>
+      <button class="screen-tab" data-screen="notes">Notes</button>
+      <button class="screen-tab" data-screen="logs">Logs</button>
+      <button class="screen-tab" data-screen="break">Break</button>
     </nav>
 
     <!-- ==================== TASKS SCREEN ==================== -->
@@ -26,14 +30,22 @@
           <span class="header-date" id="headerDate">今日</span>
           <h1 class="header-title">私のタスク</h1>
         </div>
-        <button class="header-icon" id="settingsBtn" aria-label="設定">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-            </path>
-          </svg>
-        </button>
+        <div class="header-actions">
+          <button class="header-icon" id="searchBtn" aria-label="検索">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+          </button>
+          <button class="header-icon" id="settingsBtn" aria-label="設定">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+              </path>
+            </svg>
+          </button>
+        </div>
       </header>
 
       <!-- Filter Chips (narrow screens only) -->
@@ -167,6 +179,92 @@
       </div>
     </div>
 
+    <!-- ==================== CALENDAR SCREEN ==================== -->
+    <div class="screen hidden" id="calendarScreen">
+      <header class="screen-header">
+        <button class="nav-btn" id="calendarPrev">‹</button>
+        <h2 class="screen-header-title" id="calendarTitle">2026年1月</h2>
+        <button class="nav-btn" id="calendarNext">›</button>
+        <button class="nav-btn today-btn" id="calendarToday">今日</button>
+      </header>
+      <div class="calendar-grid" id="calendarGrid">
+        <div class="calendar-weekdays">
+          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        </div>
+        <div class="calendar-days" id="calendarDays"></div>
+      </div>
+      <!-- Day Due Tasks Popup -->
+      <div class="day-popup hidden" id="dayPopup">
+        <div class="day-popup-header">
+          <span class="day-popup-date" id="dayPopupDate"></span>
+          <button class="day-popup-close" id="dayPopupClose">×</button>
+        </div>
+        <ul class="day-popup-tasks" id="dayPopupTasks"></ul>
+        <button class="btn btn-primary btn-sm" id="dayPopupAddTask">+ タスク追加</button>
+      </div>
+    </div>
+
+    <!-- ==================== NOTES SCREEN ==================== -->
+    <div class="screen hidden" id="notesScreen">
+      <header class="screen-header">
+        <h2 class="screen-header-title">メモ</h2>
+        <button class="btn btn-primary btn-sm" id="addNoteBtn">+ 新規メモ</button>
+      </header>
+      <div class="notes-container" id="notesContainer"></div>
+    </div>
+
+    <!-- ==================== LOGS SCREEN ==================== -->
+    <div class="screen hidden" id="logsScreen">
+      <header class="screen-header">
+        <button class="nav-btn" id="logsPrev">‹</button>
+        <h2 class="screen-header-title" id="logsDate">今日</h2>
+        <button class="nav-btn" id="logsNext">›</button>
+        <button class="nav-btn today-btn" id="logsToday">今日</button>
+      </header>
+      <div class="logs-summary" id="logsSummary">
+        <span class="logs-summary-item">完了: <strong id="logsCompletedCount">0</strong>件</span>
+        <span class="logs-summary-item">見積合計: <strong id="logsEstimateTotal">0</strong>m</span>
+      </div>
+      <ul class="logs-list" id="logsList"></ul>
+      <button class="btn btn-secondary btn-sm" id="logsCopyBtn">📋 今日のログをコピー</button>
+    </div>
+
+    <!-- ==================== BREAK SCREEN ==================== -->
+    <div class="screen hidden" id="breakScreen">
+      <header class="screen-header">
+        <h2 class="screen-header-title">Break</h2>
+      </header>
+      <div class="break-content">
+        <div class="pet-large-container" id="petLargeContainer">
+          <!-- SVG pet will be inserted here -->
+        </div>
+        <div class="pet-stats" id="petStats">
+          <div class="pet-stat"><span class="pet-stat-label">Level</span><span class="pet-stat-value"
+              id="petLevel">1</span></div>
+          <div class="pet-stat"><span class="pet-stat-label">XP</span><span class="pet-stat-value" id="petXP">0</span>
+          </div>
+          <div class="pet-stat"><span class="pet-stat-label">おやつ</span><span class="pet-stat-value"
+              id="petTreats">0</span></div>
+          <div class="pet-stat"><span class="pet-stat-label">きぶん</span><span class="pet-stat-value"
+              id="petMood">ふつう</span></div>
+        </div>
+        <div class="pet-actions">
+          <button class="btn btn-secondary" id="petPetBtn">🖐️ なでる</button>
+          <button class="btn btn-primary" id="petTreatBtn">🍬 おやつ</button>
+        </div>
+        <div class="pet-today-stats">
+          <h3>今日の成果</h3>
+          <p>Focus: <strong id="petTodayFocus">0</strong>分</p>
+          <p>完了タスク: <strong id="petTodayDone">0</strong>件</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mini Pet (always visible) -->
+    <div class="mini-pet" id="miniPet">
+      <div class="mini-pet-bubble hidden" id="miniPetBubble">にゃー</div>
+    </div>
+
     <!-- ==================== MODALS ==================== -->
 
     <!-- Add Task Modal -->
@@ -221,6 +319,81 @@
         </div>
       </div>
     </div>
+
+    <!-- Task Detail Modal -->
+    <div class="modal-overlay hidden" id="taskDetailModal">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2 class="modal-title">タスク詳細</h2>
+          <button class="modal-close" id="taskDetailClose">×</button>
+        </div>
+        <div class="modal-body task-detail-body">
+          <!-- Title -->
+          <div class="detail-field">
+            <label class="detail-label">タイトル</label>
+            <input type="text" class="detail-input" id="detailTitle" placeholder="タスク名">
+          </div>
+
+          <!-- Due Date -->
+          <div class="detail-field detail-field-row">
+            <div class="detail-field-half">
+              <label class="detail-label">期限</label>
+              <div class="detail-date-wrapper">
+                <input type="date" class="detail-input detail-date" id="detailDueDate">
+                <button class="detail-date-clear" id="detailDueDateClear" title="期限をクリア">×</button>
+              </div>
+            </div>
+            <div class="detail-field-half">
+              <label class="detail-label">見積</label>
+              <select class="detail-select" id="detailEstimate">
+                <option value="">—</option>
+                <option value="5">5m</option>
+                <option value="15">15m</option>
+                <option value="30">30m</option>
+                <option value="60">60m</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Note -->
+          <div class="detail-field">
+            <label class="detail-label">メモ</label>
+            <textarea class="detail-textarea" id="detailNote" rows="3" placeholder="メモを入力..."></textarea>
+          </div>
+
+          <!-- Subtasks -->
+          <div class="detail-field">
+            <label class="detail-label">サブタスク</label>
+            <ul class="subtask-list" id="subtaskList"></ul>
+            <div class="subtask-add">
+              <input type="text" class="subtask-input" id="subtaskInput" placeholder="サブタスクを追加...">
+              <button class="subtask-add-btn" id="subtaskAddBtn">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="taskDetailDelete">削除</button>
+          <button class="btn btn-primary" id="taskDetailSave">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div class="modal-overlay hidden" id="searchModal">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2 class="modal-title">検索</h2>
+          <button class="modal-close" id="searchClose">×</button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="task-input" id="searchInput" placeholder="タイトル、メモ、サブタスクを検索..." autocomplete="off">
+          <ul class="search-results" id="searchResults"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
   </div>
 
   <script src="app.js"></script>
