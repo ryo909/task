@@ -1699,22 +1699,36 @@ input {
   flex-direction: column;
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
-  max-height: 200px;
+  max-height: 250px;
   overflow-y: auto;
 }
 
 .day-popup-task {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   background: var(--bg-input);
   border-radius: var(--radius-sm);
-  cursor: pointer;
+  cursor: grab;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
 }
 
 .day-popup-task:hover {
   background: var(--bg-card-hover);
+  border-color: var(--border-default);
+}
+
+.day-popup-task.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.day-popup-task-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .day-popup-task-title {
@@ -1724,13 +1738,28 @@ input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.day-popup-task-title:hover {
+  color: var(--accent-primary);
+}
+
+.day-popup-task-est {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-chip);
+  border-radius: var(--radius-xs);
 }
 
 .day-popup-task-actions {
   display: flex;
   gap: var(--space-xs);
+  flex-wrap: wrap;
 }
 
+.move-btn,
 .postpone-btn {
   padding: 4px 8px;
   font-size: 10px;
@@ -1738,11 +1767,55 @@ input {
   background: var(--bg-chip);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
+  transition: all var(--transition-fast);
 }
 
+.move-btn:hover,
 .postpone-btn:hover {
   border-color: var(--accent-primary);
   color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Status badges in calendar popup */
+.status-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-badge.status-in-progress {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.status-badge.status-waiting {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.status-badge.status-done {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+/* Calendar day drag-drop */
+.calendar-day.drag-over {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+/* Calendar day number styling */
+.calendar-day-num {
+  font-weight: 600;
+}
+
+/* Weekend styling */
+.calendar-weekdays .weekend {
+  color: var(--text-muted);
 }
 
 /* ===== Notes ===== */

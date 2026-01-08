@@ -1915,6 +1915,8 @@
   let calendarYear = new Date().getFullYear();
   let calendarMonth = new Date().getMonth();
   let dueDateCache = {};
+  let calendarSelectedDate = null;
+  let draggedCalendarTask = null;
 
   async function initCalendarScreen() {
     await buildDueDateCache();
@@ -1945,7 +1947,8 @@
 
     const firstDay = new Date(calendarYear, calendarMonth, 1);
     const lastDay = new Date(calendarYear, calendarMonth + 1, 0);
-    const startDayOfWeek = firstDay.getDay();
+    // Monday start: getDay() returns 0=Sun, so convert to Mon=0
+    const startDayOfWeek = (firstDay.getDay() + 6) % 7;
     const today = getTodayString();
 
     // Previous month fill
@@ -1973,21 +1976,36 @@
   function createCalendarDay(container, dayNum, dateKey, otherMonth, today) {
     const div = document.createElement('div');
     div.className = 'calendar-day';
+    div.dataset.dateKey = dateKey;
     if (otherMonth) div.classList.add('other-month');
     if (dateKey === today) div.classList.add('today');
 
     const numSpan = document.createElement('span');
+    numSpan.className = 'calendar-day-num';
     numSpan.textContent = dayNum;
     div.appendChild(numSpan);
 
     const dueTasks = dueDateCache[dateKey] || [];
     if (dueTasks.length > 0) {
       div.classList.add('has-due');
+
+      // Calculate total estimate
+      const totalEstimate = dueTasks.reduce((sum, t) => sum + (t.estimateMinutes || 0), 0);
+
       const countSpan = document.createElement('span');
       countSpan.className = 'due-count';
-      countSpan.textContent = `Due ${dueTasks.length}`;
+      if (totalEstimate > 0) {
+        countSpan.textContent = `${dueTasks.length}件 / ${totalEstimate}m`;
+      } else {
+        countSpan.textContent = `${dueTasks.length}件`;
+      }
       div.appendChild(countSpan);
     }
+
+    // Drag & Drop target
+    div.addEventListener('dragover', handleCalendarDragOver);
+    div.addEventListener('dragleave', handleCalendarDragLeave);
+    div.addEventListener('drop', handleCalendarDrop);
 
     div.addEventListener('click', () => openDayPopup(dateKey, dueTasks));
     container.appendChild(div);
@@ -1999,6 +2017,7 @@
     const tasksList = document.getElementById('dayPopupTasks');
 
     dateSpan.textContent = dateKey;
+    calendarSelectedDate = dateKey;
     while (tasksList.firstChild) tasksList.removeChild(tasksList.firstChild);
 
     if (tasks.length === 0) {
@@ -2011,6 +2030,28 @@
         const li = document.createElement('li');
         li.className = 'day-popup-task';
 
+        // Make draggable (except DONE tasks)
+        if (task.status !== 'DONE') {
+          li.draggable = true;
+          li.dataset.taskId = task.id;
+          li.dataset.sourceDate = task.sourceDate;
+          li.dataset.dueDate = task.dueDate;
+          li.addEventListener('dragstart', handleCalendarTaskDragStart);
+          li.addEventListener('dragend', handleCalendarTaskDragEnd);
+        }
+
+        // Task info row
+        const infoRow = document.createElement('div');
+        infoRow.className = 'day-popup-task-info';
+
+        // Status badge
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `status-badge status-${task.status.toLowerCase().replace('_', '-')}`;
+        const statusLabels = { 'IN_PROGRESS': '進行中', 'WAITING': '待ち', 'DONE': '完了' };
+        statusBadge.textContent = statusLabels[task.status] || task.status;
+        infoRow.appendChild(statusBadge);
+
+        // Title
         const titleSpan = document.createElement('span');
         titleSpan.className = 'day-popup-task-title';
         titleSpan.textContent = task.title;
@@ -2019,30 +2060,68 @@
           selectDate(task.sourceDate);
           setTimeout(() => openTaskDetail(task.id, task.sourceDate), 100);
         });
+        infoRow.appendChild(titleSpan);
 
-        const actions = document.createElement('div');
-        actions.className = 'day-popup-task-actions';
+        // Estimate
+        if (task.estimateMinutes) {
+          const estSpan = document.createElement('span');
+          estSpan.className = 'day-popup-task-est';
+          estSpan.textContent = `${task.estimateMinutes}m`;
+          infoRow.appendChild(estSpan);
+        }
 
-        const nextWeekBtn = document.createElement('button');
-        nextWeekBtn.className = 'postpone-btn';
-        nextWeekBtn.textContent = '来週へ';
-        nextWeekBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          postponeTask(task, 7);
-        });
+        li.appendChild(infoRow);
 
-        const nextMondayBtn = document.createElement('button');
-        nextMondayBtn.className = 'postpone-btn';
-        nextMondayBtn.textContent = '来週月曜';
-        nextMondayBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          postponeToNextMonday(task);
-        });
+        // Quick reschedule buttons (only for non-DONE)
+        if (task.status !== 'DONE') {
+          const actions = document.createElement('div');
+          actions.className = 'day-popup-task-actions';
 
-        actions.appendChild(nextWeekBtn);
-        actions.appendChild(nextMondayBtn);
-        li.appendChild(titleSpan);
-        li.appendChild(actions);
+          // Today button
+          const todayBtn = document.createElement('button');
+          todayBtn.className = 'move-btn';
+          todayBtn.textContent = 'Today';
+          todayBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveTaskToDate(task, getTodayString());
+          });
+          actions.appendChild(todayBtn);
+
+          // Tomorrow button
+          const tomorrowBtn = document.createElement('button');
+          tomorrowBtn.className = 'move-btn';
+          tomorrowBtn.textContent = 'Tmrw';
+          tomorrowBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            moveTaskToDate(task, formatDate(tomorrow));
+          });
+          actions.appendChild(tomorrowBtn);
+
+          // Next Monday button
+          const nextMonBtn = document.createElement('button');
+          nextMonBtn.className = 'move-btn';
+          nextMonBtn.textContent = 'Mon';
+          nextMonBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            postponeToNextMonday(task);
+          });
+          actions.appendChild(nextMonBtn);
+
+          // Next Biz (skip weekends)
+          const nextBizBtn = document.createElement('button');
+          nextBizBtn.className = 'move-btn';
+          nextBizBtn.textContent = 'Biz';
+          nextBizBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveToNextBizDay(task);
+          });
+          actions.appendChild(nextBizBtn);
+
+          li.appendChild(actions);
+        }
+
         tasksList.appendChild(li);
       });
     }
@@ -2101,9 +2180,122 @@
     await addTask(title.trim(), [], null, selectedDate, dateKey);
     await buildDueDateCache();
     renderCalendar();
-    closeDayPopup();
+
+    // Refresh the day popup with updated tasks
+    const dueTasks = dueDateCache[dateKey] || [];
+    openDayPopup(dateKey, dueTasks);
     showToast('タスクを追加しました');
   }
+
+  // Move task to specific date
+  async function moveTaskToDate(task, targetDate) {
+    if (task.dueDate === targetDate) return;
+
+    const oldDueDate = task.dueDate;
+
+    undoAction = async () => {
+      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await buildDueDateCache();
+      renderCalendar();
+    };
+
+    await updateTask(task.sourceDate, task.id, { dueDate: targetDate, updatedAt: Date.now() });
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast(`→ ${targetDate}`, true);
+  }
+
+  // Move to next business day (skip weekends)
+  async function moveToNextBizDay(task) {
+    const oldDueDate = task.dueDate;
+    const current = new Date();
+    current.setDate(current.getDate() + 1);
+
+    // Skip Saturday (6) and Sunday (0)
+    while (current.getDay() === 0 || current.getDay() === 6) {
+      current.setDate(current.getDate() + 1);
+    }
+
+    const newDueDate = formatDate(current);
+
+    undoAction = async () => {
+      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await buildDueDateCache();
+      renderCalendar();
+    };
+
+    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast(`→ ${newDueDate} (Biz)`, true);
+  }
+
+  // Drag & Drop handlers for calendar
+  function handleCalendarTaskDragStart(e) {
+    draggedCalendarTask = {
+      taskId: e.target.dataset.taskId,
+      sourceDate: e.target.dataset.sourceDate,
+      dueDate: e.target.dataset.dueDate
+    };
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggedCalendarTask.taskId);
+  }
+
+  function handleCalendarTaskDragEnd(e) {
+    e.target.classList.remove('dragging');
+    draggedCalendarTask = null;
+
+    // Remove drag-over class from all cells
+    document.querySelectorAll('.calendar-day.drag-over').forEach(cell => {
+      cell.classList.remove('drag-over');
+    });
+  }
+
+  function handleCalendarDragOver(e) {
+    if (!draggedCalendarTask) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drag-over');
+  }
+
+  function handleCalendarDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+  }
+
+  async function handleCalendarDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+
+    if (!draggedCalendarTask) return;
+
+    const targetDateKey = e.currentTarget.dataset.dateKey;
+    if (!targetDateKey || targetDateKey === draggedCalendarTask.dueDate) {
+      draggedCalendarTask = null;
+      return;
+    }
+
+    const oldDueDate = draggedCalendarTask.dueDate;
+    const sourceDate = draggedCalendarTask.sourceDate;
+    const taskId = draggedCalendarTask.taskId;
+
+    undoAction = async () => {
+      await updateTask(sourceDate, taskId, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await buildDueDateCache();
+      renderCalendar();
+    };
+
+    await updateTask(sourceDate, taskId, { dueDate: targetDateKey, updatedAt: Date.now() });
+    await buildDueDateCache();
+    renderCalendar();
+    closeDayPopup();
+    showToast(`→ ${targetDateKey}`, true);
+
+    draggedCalendarTask = null;
+  }
+
 
   // ===== Notes =====
   let noteSaveTimers = {};
