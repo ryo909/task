@@ -2380,50 +2380,69 @@
     }
   }
 
-  // ===== Break / Pet =====
+  // ===== Break / Pet (Timer Core) =====
   let petState = null;
 
   const PET_MESSAGES = {
-    normal: ['にゃー', 'むにゃ...', '...zzz', 'ん？'],
-    happy: ['にゃん！', 'うれしい♪', 'ありがとう！', 'もふもふ'],
-    sleepy: ['ふあぁ...', 'ねむい...', 'おやすみ...']
+    normal: ['...', 'ティック', 'トック', '時を刻む...'],
+    happy: ['キラッ！', 'やった！', 'うれしい♪', 'ありがとう！'],
+    sleepy: ['zzz...', '休憩中...', '充電中...']
   };
 
+  // Timer Core SVG - clock spirit mascot
   const PET_SVG = `<svg class="pet-svg" viewBox="0 0 100 100">
     <defs>
-      <radialGradient id="bodyGrad" cx="50%" cy="40%" r="50%">
-        <stop offset="0%" stop-color="#fff5eb"/>
-        <stop offset="100%" stop-color="#ffd9b3"/>
+      <radialGradient id="coreGrad" cx="50%" cy="35%" r="55%">
+        <stop offset="0%" stop-color="#e8f4f8"/>
+        <stop offset="50%" stop-color="#a8d4e6"/>
+        <stop offset="100%" stop-color="#6bb3d0"/>
       </radialGradient>
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.2"/>
+      <radialGradient id="ringGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="70%" stop-color="#4a9ab8"/>
+        <stop offset="100%" stop-color="#2d7a98"/>
+      </radialGradient>
+      <filter id="coreShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2d7a98" flood-opacity="0.3"/>
+      </filter>
+      <filter id="groundShadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2"/>
       </filter>
     </defs>
-    <g class="body" filter="url(#shadow)">
-      <!-- Body -->
-      <ellipse cx="50" cy="60" rx="35" ry="28" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
-      <!-- Ears -->
-      <polygon points="22,35 30,55 15,50" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
-      <polygon points="78,35 70,55 85,50" fill="url(#bodyGrad)" stroke="#e8c9a8" stroke-width="1"/>
-      <!-- Inner ears -->
-      <polygon points="24,40 28,50 20,48" fill="#ffc0a0"/>
-      <polygon points="76,40 72,50 80,48" fill="#ffc0a0"/>
+    <!-- Ground shadow -->
+    <ellipse cx="50" cy="92" rx="25" ry="5" fill="#1a1a1a" opacity="0.3" filter="url(#groundShadow)"/>
+    <!-- Outer ring -->
+    <circle class="outer-ring" cx="50" cy="50" r="42" fill="none" stroke="url(#ringGrad)" stroke-width="4" opacity="0.6"/>
+    <!-- Main body (clock core) -->
+    <g class="body" filter="url(#coreShadow)">
+      <circle cx="50" cy="50" r="35" fill="url(#coreGrad)" stroke="#5a9ab0" stroke-width="1.5"/>
     </g>
+    <!-- Clock face decorations -->
+    <g class="clock-marks" opacity="0.3">
+      <line x1="50" y1="18" x2="50" y2="22" stroke="#3a6a7a" stroke-width="2" stroke-linecap="round"/>
+      <line x1="50" y1="78" x2="50" y2="82" stroke="#3a6a7a" stroke-width="2" stroke-linecap="round"/>
+      <line x1="18" y1="50" x2="22" y2="50" stroke="#3a6a7a" stroke-width="2" stroke-linecap="round"/>
+      <line x1="78" y1="50" x2="82" y2="50" stroke="#3a6a7a" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <!-- Hour hand -->
+    <line class="hour-hand" x1="50" y1="50" x2="50" y2="32" stroke="#3a5a6a" stroke-width="3" stroke-linecap="round"/>
+    <!-- Minute hand -->
+    <line class="minute-hand" x1="50" y1="50" x2="62" y2="38" stroke="#4a7a8a" stroke-width="2" stroke-linecap="round"/>
+    <!-- Center dot -->
+    <circle cx="50" cy="50" r="4" fill="#3a5a6a"/>
+    <circle cx="50" cy="50" r="2" fill="#e8f4f8"/>
     <!-- Face -->
     <g class="face">
-      <!-- Cheeks -->
-      <ellipse cx="30" cy="62" rx="8" ry="5" fill="#ffb8b8" opacity="0.4"/>
-      <ellipse cx="70" cy="62" rx="8" ry="5" fill="#ffb8b8" opacity="0.4"/>
       <!-- Eyes -->
       <g class="eyes">
-        <ellipse class="eye-left" cx="38" cy="55" rx="4" ry="5" fill="#3a3a3a"/>
-        <ellipse class="eye-right" cx="62" cy="55" rx="4" ry="5" fill="#3a3a3a"/>
-        <circle cx="37" cy="53" r="1.5" fill="white"/>
-        <circle cx="61" cy="53" r="1.5" fill="white"/>
+        <ellipse class="eye-left" cx="40" cy="48" rx="4" ry="5" fill="#2a3a3a"/>
+        <ellipse class="eye-right" cx="60" cy="48" rx="4" ry="5" fill="#2a3a3a"/>
+        <!-- Highlights -->
+        <circle cx="39" cy="46" r="1.5" fill="white"/>
+        <circle cx="59" cy="46" r="1.5" fill="white"/>
       </g>
       <!-- Mouth -->
-      <path class="mouth" d="M45,68 Q50,72 55,68" fill="none" stroke="#3a3a3a" stroke-width="1.5" stroke-linecap="round"/>
-      <text class="mouth-omega" x="50" y="72" text-anchor="middle" font-size="8" fill="#3a3a3a" style="display:none">ω</text>
+      <path class="mouth" d="M46,60 Q50,63 54,60" fill="none" stroke="#3a5a6a" stroke-width="1.5" stroke-linecap="round"/>
+      <text class="mouth-omega" x="50" y="63" text-anchor="middle" font-size="7" fill="#3a5a6a" style="display:none">ω</text>
     </g>
   </svg>`;
 
@@ -2436,20 +2455,22 @@
 
   function renderPet() {
     const container = document.getElementById('petLargeContainer');
-    container.innerHTML = PET_SVG;
+    // Preserve the bubble element
+    const bubble = document.getElementById('petBubble');
+    const bubbleHTML = bubble ? bubble.outerHTML : '';
+
+    container.innerHTML = PET_SVG + bubbleHTML;
 
     // Apply mood
-    applyPetMood(container, petState.mood);
-  }
+    if (petState) {
+      applyPetMood(container, petState.mood);
+    }
 
-  function renderMiniPet() {
-    const miniPet = document.getElementById('miniPet');
-    miniPet.innerHTML = PET_SVG;
-
-    // Scale and apply mood
-    const svg = miniPet.querySelector('.pet-svg');
-    if (svg && petState) {
-      applyPetMood(miniPet, petState.mood);
+    // Make clickable
+    const svg = container.querySelector('.pet-svg');
+    if (svg) {
+      svg.style.cursor = 'pointer';
+      svg.addEventListener('click', handlePetClick);
     }
   }
 
@@ -2457,21 +2478,46 @@
     const eyes = container.querySelectorAll('.eye-left, .eye-right');
     const mouth = container.querySelector('.mouth');
     const mouthOmega = container.querySelector('.mouth-omega');
+    const ring = container.querySelector('.outer-ring');
+    const hourHand = container.querySelector('.hour-hand');
+    const minuteHand = container.querySelector('.minute-hand');
 
     if (mood === 'happy') {
-      eyes.forEach(e => e.setAttribute('ry', '2')); // squint
+      // Happy: squint eyes, omega mouth, brighter ring
+      eyes.forEach(e => e.setAttribute('ry', '2'));
       if (mouth) mouth.style.display = 'none';
       if (mouthOmega) mouthOmega.style.display = 'block';
+      if (ring) {
+        ring.setAttribute('stroke-width', '5');
+        ring.setAttribute('opacity', '0.8');
+      }
+      if (hourHand) hourHand.setAttribute('transform', 'rotate(-10 50 50)');
+      if (minuteHand) minuteHand.setAttribute('transform', 'rotate(5 50 50)');
     } else if (mood === 'sleepy') {
-      eyes.forEach(e => e.setAttribute('ry', '1')); // closed
-      if (mouth) mouth.setAttribute('d', 'M45,68 Q50,66 55,68'); // flat
+      // Sleepy: half-closed eyes, flat mouth, dim ring
+      eyes.forEach(e => e.setAttribute('ry', '1.5'));
+      if (mouth) mouth.setAttribute('d', 'M46,60 Q50,59 54,60');
+      if (mouthOmega) mouthOmega.style.display = 'none';
+      if (ring) {
+        ring.setAttribute('stroke-width', '3');
+        ring.setAttribute('opacity', '0.4');
+      }
+      if (hourHand) hourHand.setAttribute('transform', 'rotate(15 50 50)');
+      if (minuteHand) minuteHand.setAttribute('transform', 'rotate(20 50 50)');
     } else {
+      // Normal: round eyes, small smile
       eyes.forEach(e => e.setAttribute('ry', '5'));
       if (mouth) {
         mouth.style.display = 'block';
-        mouth.setAttribute('d', 'M45,68 Q50,72 55,68');
+        mouth.setAttribute('d', 'M46,60 Q50,63 54,60');
       }
       if (mouthOmega) mouthOmega.style.display = 'none';
+      if (ring) {
+        ring.setAttribute('stroke-width', '4');
+        ring.setAttribute('opacity', '0.6');
+      }
+      if (hourHand) hourHand.removeAttribute('transform');
+      if (minuteHand) minuteHand.removeAttribute('transform');
     }
   }
 
@@ -2495,6 +2541,12 @@
     document.getElementById('petTodayDone').textContent = doneCount;
   }
 
+  async function handlePetClick() {
+    if (!petState) petState = await getPetState();
+    bouncePet(document.getElementById('petLargeContainer'));
+    showPetBubble();
+  }
+
   async function petThePet() {
     if (!petState) petState = await getPetState();
 
@@ -2512,8 +2564,10 @@
       if (petState.mood === 'happy') {
         petState.mood = 'normal';
         await savePetState(petState);
-        renderPet();
-        renderPetStats();
+        if (currentScreen === 'break') {
+          renderPet();
+          renderPetStats();
+        }
       }
     }, 5000);
   }
@@ -2547,7 +2601,9 @@
   }
 
   function showPetBubble() {
-    const bubble = document.getElementById('miniPetBubble');
+    const bubble = document.getElementById('petBubble');
+    if (!bubble) return;
+
     const messages = PET_MESSAGES[petState?.mood || 'normal'];
     bubble.textContent = messages[Math.floor(Math.random() * messages.length)];
     bubble.classList.remove('hidden');
@@ -2558,12 +2614,6 @@
     newBubble.classList.remove('hidden');
 
     setTimeout(() => newBubble.classList.add('hidden'), 2000);
-  }
-
-  function miniPetClick() {
-    if (!petState) return;
-    bouncePet(document.getElementById('miniPet'));
-    showPetBubble();
   }
 
   // ===== Award pet rewards from Focus =====
@@ -2837,13 +2887,6 @@
     // Event listeners - Break / Pet
     document.getElementById('petPetBtn').addEventListener('click', petThePet);
     document.getElementById('petTreatBtn').addEventListener('click', giveTreat);
-    document.getElementById('miniPet').addEventListener('click', miniPetClick);
-
-    // Initialize mini pet
-    getPetState().then(state => {
-      petState = state;
-      renderMiniPet();
-    });
 
     // Visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);

@@ -1921,6 +1921,7 @@ input {
 }
 
 .pet-large-container {
+  position: relative;
   width: 160px;
   height: 160px;
   display: flex;
@@ -1985,30 +1986,12 @@ input {
   color: var(--text-primary);
 }
 
-/* ===== Mini Pet ===== */
-.mini-pet {
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  width: 64px;
-  height: 64px;
-  cursor: pointer;
-  z-index: 30;
-  transition: transform var(--transition-fast);
-}
-
-.mini-pet:hover {
-  transform: scale(1.1);
-}
-
-.mini-pet:active {
-  transform: scale(0.95);
-}
-
-.mini-pet-bubble {
+/* ===== Pet Bubble (Break screen only) ===== */
+.pet-bubble {
   position: absolute;
-  bottom: 100%;
-  right: 0;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -2018,9 +2001,10 @@ input {
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   animation: bubbleFade 2s ease forwards;
+  z-index: 10;
 }
 
-.mini-pet-bubble.hidden {
+.pet-bubble.hidden {
   display: none;
 }
 
