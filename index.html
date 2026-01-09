@@ -61,7 +61,25 @@
 
       <!-- Main Content -->
       <main class="main-content">
+        <!-- Reminder Banner -->
+        <div class="reminder-banner hidden" id="reminderBanner">
+          <span class="reminder-text" id="reminderText"></span>
+          <div class="reminder-actions">
+            <button class="reminder-btn" id="reminderOpen">開く</button>
+            <button class="reminder-btn" id="reminderDone">完了</button>
+            <button class="reminder-btn" id="reminderSnooze5">5m</button>
+            <button class="reminder-btn" id="reminderSnooze10">10m</button>
+            <button class="reminder-btn reminder-close" id="reminderClose">×</button>
+          </div>
+        </div>
+
         <div class="sections-container" id="sectionsContainer">
+          <!-- Pinned Section -->
+          <section class="pinned-section hidden" id="pinnedSection">
+            <h3 class="pinned-title">📌 Pinned</h3>
+            <ul class="pinned-list" id="pinnedList"></ul>
+          </section>
+
           <!-- In Progress Section -->
           <section class="task-section" data-status="IN_PROGRESS">
             <button class="section-header" data-collapsed="false">
@@ -136,6 +154,7 @@
           </div>
           <div class="focus-task-actions">
             <button class="btn btn-secondary btn-sm" id="changeTaskBtn">タスク変更</button>
+            <button class="btn btn-secondary btn-sm" id="unlinkTaskBtn">解除</button>
             <button class="btn btn-primary btn-sm" id="completeTaskBtn">完了にする</button>
           </div>
         </div>
@@ -222,12 +241,53 @@
         <button class="nav-btn" id="logsNext">›</button>
         <button class="nav-btn today-btn" id="logsToday">今日</button>
       </header>
-      <div class="logs-summary" id="logsSummary">
-        <span class="logs-summary-item">完了: <strong id="logsCompletedCount">0</strong>件</span>
-        <span class="logs-summary-item">見積合計: <strong id="logsEstimateTotal">0</strong>m</span>
+
+      <!-- Tabs for narrow screens -->
+      <div class="logs-tabs" id="logsTabs">
+        <button class="logs-tab active" data-tab="logs">📋 ログ</button>
+        <button class="logs-tab" data-tab="report">📝 日報</button>
       </div>
-      <ul class="logs-list" id="logsList"></ul>
-      <button class="btn btn-secondary btn-sm" id="logsCopyBtn">📋 今日のログをコピー</button>
+
+      <div class="logs-container">
+        <!-- Left Column: Logs List -->
+        <div class="logs-left-panel" id="logsLeftPanel">
+          <div class="logs-summary" id="logsSummary">
+            <span class="logs-summary-item">完了: <strong id="logsCompletedCount">0</strong>件</span>
+            <span class="logs-summary-item">見積合計: <strong id="logsEstimateTotal">0</strong>m</span>
+            <span class="logs-summary-item">Focus: <strong id="logsFocusTotal">0</strong>m</span>
+          </div>
+          <ul class="logs-list" id="logsList"></ul>
+          <button class="btn btn-secondary btn-sm" id="logsCopyBtn">📋 ログをコピー</button>
+        </div>
+
+        <!-- Right Column: Daily Report -->
+        <div class="logs-right-panel hidden" id="logsRightPanel">
+          <div class="daily-report-header">
+            <h3 class="daily-report-title">📝 日報</h3>
+            <span class="daily-report-status" id="reportSaveStatus"></span>
+          </div>
+
+          <div class="daily-report-section">
+            <label class="daily-report-label">進捗・完了タスク</label>
+            <textarea class="daily-report-textarea" id="reportDoneTasks" rows="4" placeholder="今日完了したこと・進捗"></textarea>
+          </div>
+
+          <div class="daily-report-section">
+            <label class="daily-report-label">作業メモ</label>
+            <textarea class="daily-report-textarea" id="reportMemo" rows="3" placeholder="気づき・メモ"></textarea>
+          </div>
+
+          <div class="daily-report-section">
+            <label class="daily-report-label">明日やること</label>
+            <textarea class="daily-report-textarea" id="reportTomorrow" rows="3" placeholder="明日の予定・TODO"></textarea>
+          </div>
+
+          <div class="daily-report-actions">
+            <button class="btn btn-secondary btn-sm" id="reportCopyBtn">📋 日報コピー</button>
+            <button class="btn btn-secondary btn-sm" id="reportInsertLogsBtn">↓ ログ挿入</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ==================== BREAK SCREEN ==================== -->
@@ -290,6 +350,15 @@
           <button class="modal-close" id="settingsClose">×</button>
         </div>
         <div class="modal-body settings-body">
+          <div class="settings-option">
+            <label class="settings-label">作成日表示</label>
+            <select class="settings-select" id="settingsCreatedDateFormat">
+              <option value="md_ampm">M/D 午前/午後</option>
+              <option value="md">M/D</option>
+              <option value="md_hhmm">M/D HH:MM</option>
+            </select>
+          </div>
+          <hr class="settings-divider">
           <button class="settings-btn" id="exportBtn">
             <span>📤</span> データをエクスポート
           </button>
@@ -331,16 +400,22 @@
             <input type="text" class="detail-input" id="detailTitle" placeholder="タスク名">
           </div>
 
-          <!-- Due Date -->
+          <!-- Due Date & Time -->
           <div class="detail-field detail-field-row">
-            <div class="detail-field-half">
-              <label class="detail-label">期限</label>
+            <div class="detail-field-third">
+              <label class="detail-label">期限日</label>
               <div class="detail-date-wrapper">
                 <input type="date" class="detail-input detail-date" id="detailDueDate">
                 <button class="detail-date-clear" id="detailDueDateClear" title="期限をクリア">×</button>
               </div>
             </div>
-            <div class="detail-field-half">
+            <div class="detail-field-third">
+              <label class="detail-label">時刻</label>
+              <select class="detail-select" id="detailDueTime">
+                <option value="">(時刻なし)</option>
+              </select>
+            </div>
+            <div class="detail-field-third">
               <label class="detail-label">見積</label>
               <select class="detail-select" id="detailEstimate">
                 <option value="">—</option>
@@ -349,6 +424,23 @@
                 <option value="30">30m</option>
                 <option value="60">60m</option>
               </select>
+            </div>
+          </div>
+
+          <!-- Remind -->
+          <div class="detail-field detail-field-row">
+            <div class="detail-field-half">
+              <label class="detail-label">リマインド日</label>
+              <input type="date" class="detail-input detail-date" id="detailRemindDate">
+            </div>
+            <div class="detail-field-half">
+              <label class="detail-label">時刻</label>
+              <div class="detail-date-wrapper">
+                <select class="detail-select" id="detailRemindTime">
+                  <option value="">(時刻なし)</option>
+                </select>
+                <button class="detail-date-clear" id="detailRemindClear" title="リマインドをクリア">×</button>
+              </div>
             </div>
           </div>
 

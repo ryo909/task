@@ -8,13 +8,15 @@
 
   // ===== Constants =====
   const DB_NAME = 'SideDockToDo';
-  const DB_VERSION = 4; // v4: Add notes, logs, petState stores
+  const DB_VERSION = 5; // v5: Add dailyReports, settings stores + new task fields
   const STORE_DAYS = 'days';
   const STORE_META = 'meta';
   const STORE_SESSIONS = 'sessions';
   const STORE_NOTES = 'notes';
   const STORE_LOGS = 'logs';
   const STORE_PET = 'petState';
+  const STORE_DAILY_REPORTS = 'dailyReports';
+  const STORE_SETTINGS = 'settings';
   const ARCHIVE_DAYS = 7;
 
   const ESTIMATE_VALUES = [null, 5, 15, 30, 60];
@@ -47,6 +49,20 @@
     accumulatedSeconds: 0
   };
   let timerInterval = null;
+
+  // Reminder state
+  let reminderState = {
+    nextTimeout: null,
+    pendingReminder: null, // current task being reminded
+    originalTitle: document.title,
+    titleBlinkInterval: null
+  };
+
+  // Settings state
+  let appSettings = {
+    createdDateFormat: 'md_ampm', // 'md_ampm' | 'md' | 'md_hhmm'
+    soundEnabled: false
+  };
 
   // ===== DOM Elements =====
   const elements = {};
@@ -182,6 +198,15 @@
 
         if (!database.objectStoreNames.contains(STORE_PET)) {
           database.createObjectStore(STORE_PET, { keyPath: 'id' });
+        }
+
+        // v5: Add dailyReports, settings stores
+        if (!database.objectStoreNames.contains(STORE_DAILY_REPORTS)) {
+          database.createObjectStore(STORE_DAILY_REPORTS, { keyPath: 'dateKey' });
+        }
+
+        if (!database.objectStoreNames.contains(STORE_SETTINGS)) {
+          database.createObjectStore(STORE_SETTINGS);
         }
       };
     });
@@ -427,10 +452,209 @@
     });
   }
 
+  // ===== Settings Functions =====
+  async function loadSettings() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_SETTINGS, 'readonly');
+      const store = tx.objectStore(STORE_SETTINGS);
+      const request = store.get('appSettings');
+
+      request.onsuccess = () => {
+        if (request.result) {
+          appSettings = { ...appSettings, ...request.result };
+        }
+        resolve(appSettings);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function saveSettings() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_SETTINGS, 'readwrite');
+      const store = tx.objectStore(STORE_SETTINGS);
+      const request = store.put(appSettings, 'appSettings');
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // ===== Daily Report Functions =====
+  function getDailyReport(dateKey) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_DAILY_REPORTS, 'readonly');
+      const store = tx.objectStore(STORE_DAILY_REPORTS);
+      const request = store.get(dateKey);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function saveDailyReport(report) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_DAILY_REPORTS, 'readwrite');
+      const store = tx.objectStore(STORE_DAILY_REPORTS);
+      report.updatedAt = Date.now();
+      const request = store.put(report);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // ===== Helper: Get local dateKey =====
   function getLocalDateKey(timestamp = Date.now()) {
     const date = new Date(timestamp);
     return formatDate(date);
+  }
+
+  // ===== Reminder Scheduler =====
+  async function scheduleNextReminder() {
+    // Clear existing timeout
+    if (reminderState.nextTimeout) {
+      clearTimeout(reminderState.nextTimeout);
+      reminderState.nextTimeout = null;
+    }
+
+    const now = Date.now();
+    const allRecords = await getAllDayRecords();
+    let nextReminder = null;
+    let nextTask = null;
+    let nextTaskDate = null;
+
+    for (const record of allRecords) {
+      for (const task of record.tasks) {
+        if (task.status === 'DONE') continue;
+
+        // Check remindAt or snoozed time
+        let remindTime = task.remindAt;
+        if (task.remindSnoozedUntil && task.remindSnoozedUntil > now) {
+          remindTime = task.remindSnoozedUntil;
+        }
+
+        if (remindTime && remindTime > now) {
+          if (!nextReminder || remindTime < nextReminder) {
+            nextReminder = remindTime;
+            nextTask = task;
+            nextTaskDate = record.date;
+          }
+        } else if (remindTime && remindTime <= now) {
+          // Trigger immediately
+          triggerReminder(task, record.date);
+          return;
+        }
+      }
+    }
+
+    if (nextReminder && nextTask) {
+      const delay = nextReminder - now;
+      reminderState.nextTimeout = setTimeout(() => {
+        triggerReminder(nextTask, nextTaskDate);
+      }, Math.min(delay, 2147483647)); // Max setTimeout value
+    }
+  }
+
+  function triggerReminder(task, taskDate) {
+    reminderState.pendingReminder = { task, taskDate };
+
+    // Show in-app banner
+    showReminderBanner(task, taskDate);
+
+    // Start title blink
+    startTitleBlink(task.title);
+
+    // Try Web Notification
+    tryWebNotification(task);
+  }
+
+  function showReminderBanner(task, taskDate) {
+    const banner = document.getElementById('reminderBanner');
+    const text = document.getElementById('reminderText');
+    if (!banner || !text) return;
+
+    text.textContent = `🔔 ${task.title}`;
+    banner.classList.remove('hidden');
+  }
+
+  function hideReminderBanner() {
+    const banner = document.getElementById('reminderBanner');
+    if (banner) banner.classList.add('hidden');
+    stopTitleBlink();
+    reminderState.pendingReminder = null;
+  }
+
+  function startTitleBlink(taskTitle) {
+    stopTitleBlink();
+    reminderState.originalTitle = document.title;
+    let showOriginal = false;
+    reminderState.titleBlinkInterval = setInterval(() => {
+      document.title = showOriginal ? reminderState.originalTitle : `🔔 ${taskTitle}`;
+      showOriginal = !showOriginal;
+    }, 1000);
+  }
+
+  function stopTitleBlink() {
+    if (reminderState.titleBlinkInterval) {
+      clearInterval(reminderState.titleBlinkInterval);
+      reminderState.titleBlinkInterval = null;
+      document.title = reminderState.originalTitle;
+    }
+  }
+
+  async function tryWebNotification(task) {
+    if (!('Notification' in window)) return;
+
+    if (Notification.permission === 'granted') {
+      new Notification('SideDock ToDo', {
+        body: task.title,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔔</text></svg>'
+      });
+    } else if (Notification.permission !== 'denied') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        new Notification('SideDock ToDo', {
+          body: task.title
+        });
+      }
+    }
+  }
+
+  async function handleReminderAction(action) {
+    if (!reminderState.pendingReminder) return;
+
+    const { task, taskDate } = reminderState.pendingReminder;
+
+    switch (action) {
+      case 'open':
+        hideReminderBanner();
+        selectDate(taskDate);
+        openTaskDetail(task.id, taskDate);
+        break;
+      case 'done':
+        await updateTask(taskDate, task.id, { status: 'DONE', remindAt: null });
+        await createDoneLog(task, taskDate);
+        hideReminderBanner();
+        renderTasks();
+        break;
+      case 'snooze5':
+        await updateTask(taskDate, task.id, { remindSnoozedUntil: Date.now() + 5 * 60 * 1000 });
+        hideReminderBanner();
+        scheduleNextReminder();
+        break;
+      case 'snooze10':
+        await updateTask(taskDate, task.id, { remindSnoozedUntil: Date.now() + 10 * 60 * 1000 });
+        hideReminderBanner();
+        scheduleNextReminder();
+        break;
+      case 'close':
+        hideReminderBanner();
+        // Clear remind for this task
+        await updateTask(taskDate, task.id, { remindAt: null });
+        scheduleNextReminder();
+        break;
+    }
   }
 
   // ===== Data Migration =====
@@ -455,8 +679,8 @@
         }
 
         // v4: Add extended fields if missing
-        if (!('dueDate' in task)) {
-          task.dueDate = null;
+        if (!('dueDate' in task) && !('dueAt' in task)) {
+          task.dueAt = null;
           needsSave = true;
         }
         if (!('note' in task)) {
@@ -471,12 +695,46 @@
           task.updatedAt = task.createdAt || Date.now();
           needsSave = true;
         }
+
+        // v5: Migrate dueDate (YYYY-MM-DD) to dueAt (epoch ms at 18:00)
+        if ('dueDate' in task && task.dueDate && !('dueAt' in task)) {
+          const [y, m, d] = task.dueDate.split('-').map(Number);
+          const dueDateTime = new Date(y, m - 1, d, 18, 0, 0);
+          task.dueAt = dueDateTime.getTime();
+          delete task.dueDate;
+          needsSave = true;
+        } else if ('dueDate' in task && !task.dueDate && !('dueAt' in task)) {
+          task.dueAt = null;
+          delete task.dueDate;
+          needsSave = true;
+        }
+
+        // v5: Add new fields
+        if (!('remindAt' in task)) {
+          task.remindAt = null;
+          needsSave = true;
+        }
+        if (!('remindSnoozedUntil' in task)) {
+          task.remindSnoozedUntil = null;
+          needsSave = true;
+        }
+        if (!('pinnedAt' in task)) {
+          task.pinnedAt = null;
+          needsSave = true;
+        }
+        if (!('createdAt' in task)) {
+          task.createdAt = Date.now();
+          needsSave = true;
+        }
       }
 
       if (needsSave) {
         await saveDayRecord(record);
       }
     }
+
+    // Load settings
+    await loadSettings();
   }
 
   // ===== Data Operations =====
@@ -488,7 +746,7 @@
     return record;
   }
 
-  async function addTask(title, tags, estimate, date, dueDate = null) {
+  async function addTask(title, tags, estimate, date, dueAt = null) {
     const record = await getDateRecord(date);
     const maxOrder = record.tasks.reduce((max, t) => Math.max(max, t.order), -1);
     const now = Date.now();
@@ -503,11 +761,14 @@
       createdAt: now,
       carriedFrom: null,
       order: maxOrder + 1,
-      // v4 extended fields
-      dueDate: dueDate,
+      // v5 extended fields
+      dueAt: dueAt,
       note: '',
       subtasks: [],
-      updatedAt: now
+      updatedAt: now,
+      remindAt: null,
+      remindSnoozedUntil: null,
+      pinnedAt: null
     };
 
     record.tasks.push(task);
@@ -698,8 +959,27 @@
   function createTaskElement(task) {
     const li = document.createElement('li');
     li.className = 'task-card' + (task.status === 'DONE' ? ' done' : '');
+    if (task.pinnedAt) li.classList.add('pinned');
     li.dataset.id = task.id;
-    li.draggable = true;
+    // Not directly draggable - use handle
+    li.draggable = false;
+
+    // Drag handle (left side)
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'drag-handle';
+    dragHandle.textContent = '≡';
+    dragHandle.draggable = true;
+    dragHandle.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', task.id);
+      li.classList.add('dragging');
+      handleDragStart(e, li, task.id);
+    });
+    dragHandle.addEventListener('dragend', (e) => {
+      li.classList.remove('dragging');
+      handleDragEnd(e);
+    });
+    li.appendChild(dragHandle);
 
     // Top row
     const row = document.createElement('div');
@@ -709,45 +989,57 @@
     const statusIcon = document.createElement('span');
     statusIcon.className = `status-icon ${task.status}`;
     statusIcon.title = STATUS_LABELS[task.status];
-    statusIcon.addEventListener('click', () => cycleStatus(task.id));
+    statusIcon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cycleStatus(task.id);
+    });
     row.appendChild(statusIcon);
+
+    // Pin button
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'pin-btn' + (task.pinnedAt ? ' pinned' : '');
+    pinBtn.textContent = '📌';
+    pinBtn.title = task.pinnedAt ? 'ピン解除' : 'ピン留め';
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(task.id);
+    });
+    row.appendChild(pinBtn);
 
     // Priority dot
     const priorityDot = document.createElement('span');
     priorityDot.className = `priority-dot priority-${task.priority}`;
     priorityDot.title = `優先度: ${['低', '中', '高'][task.priority - 1]}`;
-    priorityDot.addEventListener('click', () => cyclePriority(task.id));
+    priorityDot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cyclePriority(task.id);
+    });
     row.appendChild(priorityDot);
 
     // Title
     const title = document.createElement('span');
     title.className = 'task-title';
     title.textContent = task.title;
-    title.addEventListener('dblclick', () => startEditing(task.id, title));
+    title.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startEditing(task.id, title);
+    });
     row.appendChild(title);
 
-    // Due date badge
-    if (task.dueDate) {
-      const today = getTodayString();
-      const dueBadge = document.createElement('span');
-      dueBadge.className = 'due-badge';
-      if (task.dueDate < today) {
-        dueBadge.classList.add('overdue');
-        dueBadge.textContent = '期限切れ';
-      } else if (task.dueDate === today) {
-        dueBadge.classList.add('today');
-        dueBadge.textContent = '今日';
-      } else {
-        dueBadge.textContent = task.dueDate.slice(5); // MM-DD
-      }
+    // Due badge (clickable for editing)
+    if (task.dueAt) {
+      const dueBadge = createDueBadge(task);
       row.appendChild(dueBadge);
     }
 
-    // Time badge
-    const timeBadge = document.createElement('span');
-    timeBadge.className = 'time-badge';
-    timeBadge.textContent = formatTime(task.createdAt);
-    row.appendChild(timeBadge);
+    // Remind indicator
+    if (task.remindAt) {
+      const remindBadge = document.createElement('span');
+      remindBadge.className = 'remind-badge';
+      remindBadge.textContent = '🔔';
+      remindBadge.title = `リマインド: ${formatDateTime(task.remindAt)}`;
+      row.appendChild(remindBadge);
+    }
 
     // Edit button
     const editBtn = document.createElement('button');
@@ -765,7 +1057,10 @@
     deleteBtn.className = 'delete-btn';
     deleteBtn.textContent = '×';
     deleteBtn.title = '削除';
-    deleteBtn.addEventListener('click', () => handleDelete(task.id));
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleDelete(task.id);
+    });
     row.appendChild(deleteBtn);
 
     // Focus button (only for IN_PROGRESS tasks)
@@ -787,9 +1082,20 @@
     const meta = document.createElement('div');
     meta.className = 'task-meta';
 
+    // Created date + days ago
+    const createdBadge = document.createElement('span');
+    createdBadge.className = 'created-badge';
+    const createdInfo = formatCreatedDate(task.createdAt);
+    createdBadge.textContent = createdInfo.text;
+    if (createdInfo.staleClass) {
+      createdBadge.classList.add(createdInfo.staleClass);
+    }
+    meta.appendChild(createdBadge);
+
     // Estimate dropdown
     const estimateSelect = document.createElement('select');
     estimateSelect.className = 'estimate-select';
+    estimateSelect.addEventListener('click', (e) => e.stopPropagation());
     const estimateOptions = [
       { value: '', label: '—' },
       { value: '5', label: '5m' },
@@ -814,8 +1120,6 @@
     });
     meta.appendChild(estimateSelect);
 
-    // Tags removed - no longer displayed
-
     // Carried from chip
     if (task.carriedFrom) {
       const carriedChip = document.createElement('span');
@@ -826,9 +1130,21 @@
 
     li.appendChild(meta);
 
-    // Drag events
-    li.addEventListener('dragstart', handleDragStart);
-    li.addEventListener('dragend', handleDragEnd);
+    // Card click opens detail (excluding interactive elements)
+    li.addEventListener('click', (e) => {
+      // Don't trigger if clicking certain elements
+      const tag = e.target.tagName.toLowerCase();
+      if (tag === 'button' || tag === 'select' || tag === 'input' ||
+        e.target.classList.contains('drag-handle') ||
+        e.target.classList.contains('status-icon') ||
+        e.target.classList.contains('priority-dot') ||
+        e.target.classList.contains('pin-btn')) {
+        return;
+      }
+      openTaskDetail(task.id);
+    });
+
+    // Drag events for card (as drop target)
     li.addEventListener('dragover', handleDragOver);
     li.addEventListener('drop', handleDrop);
     li.addEventListener('dragleave', handleDragLeave);
@@ -836,9 +1152,134 @@
     return li;
   }
 
+  // Format dueAt for display
+  function formatDueAt(dueAt) {
+    if (!dueAt) return null;
+    const dueDate = new Date(dueAt);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+
+    const timeStr = formatTime(dueAt);
+
+    if (dueDay.getTime() < today.getTime()) {
+      return { text: `期限切れ ${timeStr}`, class: 'overdue' };
+    } else if (dueDay.getTime() === today.getTime()) {
+      return { text: `今日 ${timeStr}`, class: 'today' };
+    } else if (dueDay.getTime() === tomorrow.getTime()) {
+      return { text: `明日 ${timeStr}`, class: 'tomorrow' };
+    } else {
+      const m = dueDate.getMonth() + 1;
+      const d = dueDate.getDate();
+      return { text: `${m}/${d} ${timeStr}`, class: '' };
+    }
+  }
+
+  // Create due badge element
+  function createDueBadge(task) {
+    const dueBadge = document.createElement('span');
+    dueBadge.className = 'due-badge clickable';
+    const dueInfo = formatDueAt(task.dueAt);
+    if (dueInfo) {
+      dueBadge.textContent = dueInfo.text;
+      if (dueInfo.class) dueBadge.classList.add(dueInfo.class);
+    }
+    dueBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDuePopover(task, dueBadge);
+    });
+    return dueBadge;
+  }
+
+  // Format datetime for display
+  function formatDateTime(timestamp) {
+    const date = new Date(timestamp);
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${m}/${d} ${h}:${min}`;
+  }
+
+  // Format created date based on settings
+  function formatCreatedDate(createdAt) {
+    if (!createdAt) return { text: '', staleClass: null };
+    const date = new Date(createdAt);
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    const h = date.getHours();
+
+    let dateText = '';
+    if (appSettings.createdDateFormat === 'md_ampm') {
+      const ampm = h < 12 ? '午前' : '午後';
+      dateText = `${m}/${d} ${ampm}`;
+    } else if (appSettings.createdDateFormat === 'md') {
+      dateText = `${m}/${d}`;
+    } else if (appSettings.createdDateFormat === 'md_hhmm') {
+      const hStr = String(h).padStart(2, '0');
+      const minStr = String(date.getMinutes()).padStart(2, '0');
+      dateText = `${m}/${d} ${hStr}:${minStr}`;
+    } else {
+      const ampm = h < 12 ? '午前' : '午後';
+      dateText = `${m}/${d} ${ampm}`;
+    }
+
+    // Calculate days ago
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const createdStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const daysAgo = Math.floor((todayStart - createdStart) / (24 * 60 * 60 * 1000));
+
+    if (daysAgo > 0) {
+      dateText += ` (${daysAgo}d)`;
+    }
+
+    let staleClass = null;
+    if (daysAgo >= 7) {
+      staleClass = 'stale-7d';
+    } else if (daysAgo >= 3) {
+      staleClass = 'stale-3d';
+    }
+
+    return { text: dateText, staleClass };
+  }
+
   async function renderTasks() {
     const record = await getDateRecord(selectedDate);
     const tasks = [...record.tasks].sort((a, b) => a.order - b.order);
+
+    // Get all pinned tasks (across all dates)
+    const allRecords = await getAllDayRecords();
+    const pinnedTasks = [];
+    for (const rec of allRecords) {
+      for (const task of rec.tasks) {
+        if (task.pinnedAt) {
+          pinnedTasks.push({ ...task, sourceDate: rec.date });
+        }
+      }
+    }
+    // Sort by pinnedAt
+    pinnedTasks.sort((a, b) => a.pinnedAt - b.pinnedAt);
+
+    // Render Pinned section
+    const pinnedSection = document.getElementById('pinnedSection');
+    const pinnedList = document.getElementById('pinnedList');
+    if (pinnedSection && pinnedList) {
+      while (pinnedList.firstChild) pinnedList.removeChild(pinnedList.firstChild);
+
+      if (pinnedTasks.length > 0) {
+        pinnedSection.classList.remove('hidden');
+        pinnedTasks.forEach(task => {
+          const el = createTaskElement(task);
+          // Store source date for pinned tasks from other dates
+          el.dataset.sourceDate = task.sourceDate;
+          pinnedList.appendChild(el);
+        });
+      } else {
+        pinnedSection.classList.add('hidden');
+      }
+    }
 
     // Group by status
     const grouped = {
@@ -889,6 +1330,9 @@
     });
 
     updateHeaderDate();
+
+    // Schedule reminders
+    scheduleNextReminder();
   }
 
   function updateHeaderDate() {
@@ -996,6 +1440,166 @@
     renderTasks();
   }
 
+  // Pin/Unpin task (max 3 pinned)
+  async function togglePin(taskId) {
+    const record = await getDateRecord(selectedDate);
+    const task = record.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.pinnedAt) {
+      // Unpin
+      await updateTask(selectedDate, taskId, { pinnedAt: null });
+      showToast('ピンを解除しました');
+    } else {
+      // Check max pinned count (across all dates)
+      const allRecords = await getAllDayRecords();
+      let pinnedCount = 0;
+      for (const rec of allRecords) {
+        pinnedCount += rec.tasks.filter(t => t.pinnedAt && t.id !== taskId).length;
+      }
+
+      if (pinnedCount >= 3) {
+        showToast('Pinnedは最大3件です。どれか解除してください');
+        return;
+      }
+
+      await updateTask(selectedDate, taskId, { pinnedAt: Date.now() });
+      showToast('ピン留めしました');
+    }
+    renderTasks();
+  }
+
+  // Open due date/time popover
+  let activeDuePopover = null;
+
+  function openDuePopover(task, anchorElement) {
+    // Close existing popover
+    if (activeDuePopover) {
+      activeDuePopover.remove();
+      activeDuePopover = null;
+    }
+
+    const popover = document.createElement('div');
+    popover.className = 'due-popover';
+
+    // Date input
+    const dateLabel = document.createElement('label');
+    dateLabel.textContent = '日付';
+    dateLabel.className = 'popover-label';
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.className = 'popover-date-input';
+    if (task.dueAt) {
+      const d = new Date(task.dueAt);
+      dateInput.value = formatDate(d);
+    }
+
+    // Time select
+    const timeLabel = document.createElement('label');
+    timeLabel.textContent = '時刻';
+    timeLabel.className = 'popover-label';
+    const timeSelect = document.createElement('select');
+    timeSelect.className = 'popover-time-select';
+
+    // Generate 15-min intervals
+    const timeOptions = [{ value: '', label: '(時刻なし)' }];
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        const hStr = String(h).padStart(2, '0');
+        const mStr = String(m).padStart(2, '0');
+        timeOptions.push({ value: `${hStr}:${mStr}`, label: `${hStr}:${mStr}` });
+      }
+    }
+
+    let currentTimeValue = '';
+    if (task.dueAt) {
+      const d = new Date(task.dueAt);
+      currentTimeValue = formatTime(task.dueAt);
+    }
+
+    timeOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if (opt.value === currentTimeValue) option.selected = true;
+      timeSelect.appendChild(option);
+    });
+
+    // Buttons
+    const btnRow = document.createElement('div');
+    btnRow.className = 'popover-buttons';
+
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'クリア';
+    clearBtn.className = 'btn btn-secondary btn-sm';
+    clearBtn.addEventListener('click', () => {
+      updateTask(selectedDate, task.id, { dueAt: null }).then(() => {
+        popover.remove();
+        activeDuePopover = null;
+        renderTasks();
+      });
+    });
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = '保存';
+    saveBtn.className = 'btn btn-primary btn-sm';
+    saveBtn.addEventListener('click', () => {
+      const dateVal = dateInput.value;
+      const timeVal = timeSelect.value;
+
+      let dueAt = null;
+      if (dateVal) {
+        const [y, mo, d] = dateVal.split('-').map(Number);
+        if (timeVal) {
+          const [h, m] = timeVal.split(':').map(Number);
+          dueAt = new Date(y, mo - 1, d, h, m).getTime();
+        } else {
+          dueAt = new Date(y, mo - 1, d, 18, 0).getTime(); // Default 18:00
+        }
+      }
+
+      updateTask(selectedDate, task.id, { dueAt }).then(() => {
+        popover.remove();
+        activeDuePopover = null;
+        renderTasks();
+      });
+    });
+
+    btnRow.appendChild(clearBtn);
+    btnRow.appendChild(saveBtn);
+
+    popover.appendChild(dateLabel);
+    popover.appendChild(dateInput);
+    popover.appendChild(timeLabel);
+    popover.appendChild(timeSelect);
+    popover.appendChild(btnRow);
+
+    // Position popover
+    document.body.appendChild(popover);
+    const anchorRect = anchorElement.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = (anchorRect.bottom + 4) + 'px';
+    popover.style.left = anchorRect.left + 'px';
+
+    // Adjust if off screen
+    const popoverRect = popover.getBoundingClientRect();
+    if (popoverRect.right > window.innerWidth) {
+      popover.style.left = (window.innerWidth - popoverRect.width - 10) + 'px';
+    }
+
+    activeDuePopover = popover;
+
+    // Close on outside click
+    const closeHandler = (e) => {
+      if (!popover.contains(e.target) && e.target !== anchorElement) {
+        popover.remove();
+        activeDuePopover = null;
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+  }
+
   function startEditing(taskId, titleElement) {
     const currentText = titleElement.textContent;
     const input = document.createElement('input');
@@ -1027,16 +1631,13 @@
     input.select();
   }
 
-  // ===== Drag and Drop (Cross-Column Support) =====
+  // ===== Drag and Drop (Cross-Column Support with Handle) =====
   let draggedElement = null;
   let draggedTaskId = null;
 
-  function handleDragStart(e) {
-    draggedElement = e.currentTarget;
-    draggedTaskId = e.currentTarget.dataset.id;
-    e.currentTarget.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedTaskId);
+  function handleDragStart(e, cardElement, taskId) {
+    draggedElement = cardElement;
+    draggedTaskId = taskId;
 
     // Activate all drop zones
     document.querySelectorAll('.task-list').forEach(list => {
@@ -1045,13 +1646,15 @@
   }
 
   function handleDragEnd(e) {
-    e.currentTarget.classList.remove('dragging');
+    if (draggedElement) {
+      draggedElement.classList.remove('dragging');
+    }
     draggedElement = null;
     draggedTaskId = null;
 
     // Clear all highlights
     document.querySelectorAll('.task-card').forEach(el => {
-      el.classList.remove('drag-over');
+      el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
     });
     document.querySelectorAll('.task-list').forEach(list => {
       list.classList.remove('drop-zone-active', 'drop-zone-highlight');
@@ -1067,39 +1670,64 @@
     e.dataTransfer.dropEffect = 'move';
 
     const target = e.currentTarget;
-    if (target !== draggedElement && target.classList.contains('task-card')) {
-      target.classList.add('drag-over');
+    if (target === draggedElement || !target.classList.contains('task-card')) return;
+
+    // Calculate position based on Y coordinate
+    const rect = target.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const isAbove = e.clientY < midY;
+
+    // Clear previous indicators
+    target.classList.remove('drag-over-top', 'drag-over-bottom');
+
+    // Show indicator for insertion position
+    if (isAbove) {
+      target.classList.add('drag-over-top');
+    } else {
+      target.classList.add('drag-over-bottom');
     }
+    target.classList.add('drag-over');
   }
 
   function handleDragLeave(e) {
-    e.currentTarget.classList.remove('drag-over');
+    e.currentTarget.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
   }
 
   // Handle drop on task card (reorder within or move across sections)
   function handleDrop(e) {
     e.preventDefault();
     const target = e.currentTarget;
-    target.classList.remove('drag-over');
+    target.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
 
-    if (!draggedElement || target === draggedElement) return;
+    if (!draggedElement || !draggedTaskId || target === draggedElement) return;
 
     const targetList = target.closest('.task-list');
+    if (!targetList) return;
+
     const draggedList = draggedElement.closest('.task-list');
     const targetSection = targetList.closest('.task-section');
     const newStatus = targetSection.dataset.status;
 
-    // Get insert position
+    // Determine insert position based on Y coordinate
+    const rect = target.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const insertBefore = e.clientY < midY;
+
+    // Get all cards except the one being dragged
     const cards = Array.from(targetList.querySelectorAll('.task-card:not(.dragging)'));
-    const targetIndex = cards.indexOf(target);
+    let targetIndex = cards.indexOf(target);
+
+    // Adjust index based on position
+    if (!insertBefore) {
+      targetIndex++;
+    }
 
     if (targetList === draggedList) {
-      // Same section: simple reorder
-      const draggedIndex = cards.indexOf(draggedElement);
-      if (draggedIndex < targetIndex) {
-        target.after(draggedElement);
-      } else {
+      // Same section: DOM reorder then save
+      if (insertBefore) {
         target.before(draggedElement);
+      } else {
+        target.after(draggedElement);
       }
       const newOrder = Array.from(targetList.querySelectorAll('.task-card')).map(el => el.dataset.id);
       reorderTasks(selectedDate, newOrder);
@@ -1278,10 +1906,7 @@
     renderFocusUI();
     renderFocusSessions();
 
-    // If no active task, show selection modal
-    if (!focusState.activeTask) {
-      openTaskSelectModal();
-    }
+    // No longer auto-open task select modal - allow task-less timer
   }
 
   function renderFocusUI() {
@@ -1397,10 +2022,7 @@
   }
 
   function startTimer() {
-    if (!focusState.activeTask) {
-      openTaskSelectModal();
-      return;
-    }
+    // Allow timer to start even without a task selected
 
     if (focusState.running) {
       // Pause
@@ -1430,8 +2052,6 @@
   }
 
   async function stopTimer(autoCompleted) {
-    if (!focusState.activeTask) return;
-
     const now = Date.now();
     let duration = focusState.accumulatedSeconds;
     if (focusState.running && focusState.startedAt) {
@@ -1443,8 +2063,10 @@
       const session = {
         id: generateId(),
         date: getTodayString(),
-        taskId: focusState.activeTask.id,
-        taskTitle: focusState.activeTask.title,
+        taskId: focusState.activeTask ? focusState.activeTask.id : null,
+        taskTitle: focusState.activeTask ? focusState.activeTask.title : '(タスクなし)',
+        linkedTaskId: focusState.activeTask ? focusState.activeTask.id : null,
+        linkedTaskTitleSnapshot: focusState.activeTask ? focusState.activeTask.title : null,
         mode: focusState.mode,
         plannedMinutes: focusState.mode === 'countdown' ? focusState.plannedSeconds / 60 : null,
         startedAt: now - (duration * 1000),
@@ -1453,7 +2075,7 @@
       };
       await saveSession(session);
 
-      // Award pet rewards
+      // Award pet rewards (even without task)
       const durationMinutes = Math.floor(duration / 60);
       if (durationMinutes > 0) {
         await awardFocusReward(durationMinutes);
@@ -1651,6 +2273,15 @@
     });
   }
 
+  // Unlink task from focus (keep timer running)
+  function unlinkActiveTask() {
+    focusState.activeTaskId = null;
+    focusState.activeTask = null;
+    saveFocusState();
+    renderFocusUI();
+    showToast('タスクを解除しました');
+  }
+
   // ===== Visibility Change Handler =====
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible') {
@@ -1683,7 +2314,27 @@
       if (!task) return;
 
       document.getElementById('detailTitle').value = task.title;
-      document.getElementById('detailDueDate').value = task.dueDate || '';
+
+      // Due date and time
+      if (task.dueAt) {
+        const dueDate = new Date(task.dueAt);
+        document.getElementById('detailDueDate').value = formatDate(dueDate);
+        document.getElementById('detailDueTime').value = formatTime(task.dueAt);
+      } else {
+        document.getElementById('detailDueDate').value = '';
+        document.getElementById('detailDueTime').value = '';
+      }
+
+      // Remind date and time
+      if (task.remindAt) {
+        const remindDate = new Date(task.remindAt);
+        document.getElementById('detailRemindDate').value = formatDate(remindDate);
+        document.getElementById('detailRemindTime').value = formatTime(task.remindAt);
+      } else {
+        document.getElementById('detailRemindDate').value = '';
+        document.getElementById('detailRemindTime').value = '';
+      }
+
       document.getElementById('detailEstimate').value = task.estimateMinutes || '';
       document.getElementById('detailNote').value = task.note || '';
       detailSubtasks = [...(task.subtasks || [])];
@@ -1757,9 +2408,39 @@
   async function saveTaskDetail() {
     if (!detailTaskId) return;
 
+    // Build dueAt from date and time
+    let dueAt = null;
+    const dueDateVal = document.getElementById('detailDueDate').value;
+    const dueTimeVal = document.getElementById('detailDueTime').value;
+    if (dueDateVal) {
+      const [y, m, d] = dueDateVal.split('-').map(Number);
+      if (dueTimeVal) {
+        const [h, min] = dueTimeVal.split(':').map(Number);
+        dueAt = new Date(y, m - 1, d, h, min).getTime();
+      } else {
+        dueAt = new Date(y, m - 1, d, 18, 0).getTime(); // Default 18:00
+      }
+    }
+
+    // Build remindAt from date and time
+    let remindAt = null;
+    const remindDateVal = document.getElementById('detailRemindDate').value;
+    const remindTimeVal = document.getElementById('detailRemindTime').value;
+    if (remindDateVal) {
+      const [y, m, d] = remindDateVal.split('-').map(Number);
+      if (remindTimeVal) {
+        const [h, min] = remindTimeVal.split(':').map(Number);
+        remindAt = new Date(y, m - 1, d, h, min).getTime();
+      } else {
+        remindAt = new Date(y, m - 1, d, 9, 0).getTime(); // Default 9:00
+      }
+    }
+
     const updates = {
       title: document.getElementById('detailTitle').value.trim() || '（無題）',
-      dueDate: document.getElementById('detailDueDate').value || null,
+      dueAt: dueAt,
+      remindAt: remindAt,
+      remindSnoozedUntil: null, // Reset snooze on manual edit
       estimateMinutes: document.getElementById('detailEstimate').value ? parseInt(document.getElementById('detailEstimate').value) : null,
       note: document.getElementById('detailNote').value,
       subtasks: detailSubtasks,
@@ -1928,11 +2609,14 @@
     const allRecords = await getAllDayRecords();
     for (const record of allRecords) {
       for (const task of record.tasks) {
-        if (task.dueDate && task.status !== 'DONE') {
-          if (!dueDateCache[task.dueDate]) {
-            dueDateCache[task.dueDate] = [];
+        if (task.dueAt && task.status !== 'DONE') {
+          // Convert dueAt epoch to date string
+          const dueDate = new Date(task.dueAt);
+          const dueDateKey = formatDate(dueDate);
+          if (!dueDateCache[dueDateKey]) {
+            dueDateCache[dueDateKey] = [];
           }
-          dueDateCache[task.dueDate].push({ ...task, sourceDate: record.date });
+          dueDateCache[dueDateKey].push({ ...task, sourceDate: record.date });
         }
       }
     }
@@ -2035,7 +2719,7 @@
           li.draggable = true;
           li.dataset.taskId = task.id;
           li.dataset.sourceDate = task.sourceDate;
-          li.dataset.dueDate = task.dueDate;
+          li.dataset.dueAt = task.dueAt;
           li.addEventListener('dragstart', handleCalendarTaskDragStart);
           li.addEventListener('dragend', handleCalendarTaskDragEnd);
         }
@@ -2135,39 +2819,39 @@
   }
 
   async function postponeTask(task, days) {
-    const oldDueDate = task.dueDate;
-    const oldDate = new Date(task.dueDate);
+    const oldDueAt = task.dueAt;
+    const oldDate = new Date(task.dueAt);
     oldDate.setDate(oldDate.getDate() + days);
-    const newDueDate = formatDate(oldDate);
+    const newDueAt = oldDate.getTime();
 
     undoAction = async () => {
-      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await updateTask(task.sourceDate, task.id, { dueAt: oldDueAt, updatedAt: Date.now() });
     };
 
-    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await updateTask(task.sourceDate, task.id, { dueAt: newDueAt, updatedAt: Date.now() });
     await buildDueDateCache();
     renderCalendar();
     closeDayPopup();
-    showToast(`期限を ${newDueDate} に変更しました`, true);
+    showToast(`期限を ${formatDate(oldDate)} に変更しました`, true);
   }
 
   async function postponeToNextMonday(task) {
-    const oldDueDate = task.dueDate;
-    const current = new Date(task.dueDate);
+    const oldDueAt = task.dueAt;
+    const current = new Date(task.dueAt);
     const dayOfWeek = current.getDay();
     const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
     current.setDate(current.getDate() + daysUntilMonday);
-    const newDueDate = formatDate(current);
+    const newDueAt = current.getTime();
 
     undoAction = async () => {
-      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await updateTask(task.sourceDate, task.id, { dueAt: oldDueAt, updatedAt: Date.now() });
     };
 
-    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await updateTask(task.sourceDate, task.id, { dueAt: newDueAt, updatedAt: Date.now() });
     await buildDueDateCache();
     renderCalendar();
     closeDayPopup();
-    showToast(`期限を ${newDueDate} に変更しました`, true);
+    showToast(`期限を ${formatDate(current)} に変更しました`, true);
   }
 
   async function addTaskFromCalendar() {
@@ -2177,7 +2861,11 @@
     const title = prompt('タスク名を入力:');
     if (!title || !title.trim()) return;
 
-    await addTask(title.trim(), [], null, selectedDate, dateKey);
+    // Convert dateKey to dueAt (default 18:00)
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const dueAt = new Date(y, m - 1, d, 18, 0).getTime();
+
+    await addTask(title.trim(), [], null, selectedDate, dueAt);
     await buildDueDateCache();
     renderCalendar();
 
@@ -2187,19 +2875,26 @@
     showToast('タスクを追加しました');
   }
 
-  // Move task to specific date
+  // Move task to specific date (targetDate is YYYY-MM-DD string)
   async function moveTaskToDate(task, targetDate) {
-    if (task.dueDate === targetDate) return;
+    const oldDueAt = task.dueAt;
+    const oldDueDate = oldDueAt ? new Date(oldDueAt) : null;
 
-    const oldDueDate = task.dueDate;
+    // Preserve time from old dueAt, or default to 18:00
+    const [y, m, d] = targetDate.split('-').map(Number);
+    const hours = oldDueDate ? oldDueDate.getHours() : 18;
+    const mins = oldDueDate ? oldDueDate.getMinutes() : 0;
+    const newDueAt = new Date(y, m - 1, d, hours, mins).getTime();
+
+    if (oldDueAt === newDueAt) return;
 
     undoAction = async () => {
-      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await updateTask(task.sourceDate, task.id, { dueAt: oldDueAt, updatedAt: Date.now() });
       await buildDueDateCache();
       renderCalendar();
     };
 
-    await updateTask(task.sourceDate, task.id, { dueDate: targetDate, updatedAt: Date.now() });
+    await updateTask(task.sourceDate, task.id, { dueAt: newDueAt, updatedAt: Date.now() });
     await buildDueDateCache();
     renderCalendar();
     closeDayPopup();
@@ -2208,7 +2903,8 @@
 
   // Move to next business day (skip weekends)
   async function moveToNextBizDay(task) {
-    const oldDueDate = task.dueDate;
+    const oldDueAt = task.dueAt;
+    const oldDueDate = oldDueAt ? new Date(oldDueAt) : null;
     const current = new Date();
     current.setDate(current.getDate() + 1);
 
@@ -2217,19 +2913,23 @@
       current.setDate(current.getDate() + 1);
     }
 
-    const newDueDate = formatDate(current);
+    // Preserve time or default to 18:00
+    const hours = oldDueDate ? oldDueDate.getHours() : 18;
+    const mins = oldDueDate ? oldDueDate.getMinutes() : 0;
+    current.setHours(hours, mins, 0, 0);
+    const newDueAt = current.getTime();
 
     undoAction = async () => {
-      await updateTask(task.sourceDate, task.id, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await updateTask(task.sourceDate, task.id, { dueAt: oldDueAt, updatedAt: Date.now() });
       await buildDueDateCache();
       renderCalendar();
     };
 
-    await updateTask(task.sourceDate, task.id, { dueDate: newDueDate, updatedAt: Date.now() });
+    await updateTask(task.sourceDate, task.id, { dueAt: newDueAt, updatedAt: Date.now() });
     await buildDueDateCache();
     renderCalendar();
     closeDayPopup();
-    showToast(`→ ${newDueDate} (Biz)`, true);
+    showToast(`→ ${formatDate(current)} (Biz)`, true);
   }
 
   // Drag & Drop handlers for calendar
@@ -2237,7 +2937,7 @@
     draggedCalendarTask = {
       taskId: e.target.dataset.taskId,
       sourceDate: e.target.dataset.sourceDate,
-      dueDate: e.target.dataset.dueDate
+      dueAt: parseInt(e.target.dataset.dueAt)
     };
     e.target.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
@@ -2272,22 +2972,30 @@
     if (!draggedCalendarTask) return;
 
     const targetDateKey = e.currentTarget.dataset.dateKey;
-    if (!targetDateKey || targetDateKey === draggedCalendarTask.dueDate) {
+    const oldDueAt = draggedCalendarTask.dueAt;
+    const oldDueDate = oldDueAt ? new Date(oldDueAt) : null;
+
+    // Convert targetDateKey to dueAt, preserving time or defaulting to 18:00
+    const [y, m, d] = targetDateKey.split('-').map(Number);
+    const hours = oldDueDate ? oldDueDate.getHours() : 18;
+    const mins = oldDueDate ? oldDueDate.getMinutes() : 0;
+    const newDueAt = new Date(y, m - 1, d, hours, mins).getTime();
+
+    if (oldDueAt === newDueAt) {
       draggedCalendarTask = null;
       return;
     }
 
-    const oldDueDate = draggedCalendarTask.dueDate;
     const sourceDate = draggedCalendarTask.sourceDate;
     const taskId = draggedCalendarTask.taskId;
 
     undoAction = async () => {
-      await updateTask(sourceDate, taskId, { dueDate: oldDueDate, updatedAt: Date.now() });
+      await updateTask(sourceDate, taskId, { dueAt: oldDueAt, updatedAt: Date.now() });
       await buildDueDateCache();
       renderCalendar();
     };
 
-    await updateTask(sourceDate, taskId, { dueDate: targetDateKey, updatedAt: Date.now() });
+    await updateTask(sourceDate, taskId, { dueAt: newDueAt, updatedAt: Date.now() });
     await buildDueDateCache();
     renderCalendar();
     closeDayPopup();
@@ -2442,10 +3150,41 @@
 
   // ===== Logs =====
   let logsDateKey = getTodayString();
+  let reportSaveTimer = null;
 
   async function initLogsScreen() {
     logsDateKey = getTodayString();
     await renderLogs();
+    await loadDailyReport();
+    setupLogsTabSwitching();
+  }
+
+  function setupLogsTabSwitching() {
+    document.querySelectorAll('.logs-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        setLogsTab(tabName);
+      });
+    });
+  }
+
+  function setLogsTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.logs-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+
+    // Show/hide panels
+    const leftPanel = document.getElementById('logsLeftPanel');
+    const rightPanel = document.getElementById('logsRightPanel');
+
+    if (tabName === 'logs') {
+      leftPanel.classList.remove('hidden');
+      rightPanel.classList.add('hidden');
+    } else {
+      leftPanel.classList.add('hidden');
+      rightPanel.classList.remove('hidden');
+    }
   }
 
   async function renderLogs() {
@@ -2455,10 +3194,15 @@
     const logs = await getLogsForDate(logsDateKey);
     const validLogs = logs.filter(l => l.type === 'taskDone');
 
+    // Get focus sessions for the date
+    const sessions = await getSessionsForDate(logsDateKey);
+    const totalFocus = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
+
     // Summary
     document.getElementById('logsCompletedCount').textContent = validLogs.length;
     const totalEstimate = validLogs.reduce((sum, l) => sum + (l.estimateMinutesSnapshot || 0), 0);
     document.getElementById('logsEstimateTotal').textContent = totalEstimate;
+    document.getElementById('logsFocusTotal').textContent = Math.floor(totalFocus / 60);
 
     // List
     const list = document.getElementById('logsList');
@@ -2497,6 +3241,9 @@
 
       list.appendChild(li);
     });
+
+    // Load daily report for this date
+    await loadDailyReport();
   }
 
   async function tryOpenLogTask(log) {
@@ -2542,6 +3289,111 @@
     } catch {
       showToast('コピーに失敗しました');
     }
+  }
+
+  // ===== Daily Report Functions =====
+  async function loadDailyReport() {
+    const report = await getDailyReport(logsDateKey);
+
+    document.getElementById('reportDoneTasks').value = report?.doneTasks || '';
+    document.getElementById('reportMemo').value = report?.memo || '';
+    document.getElementById('reportTomorrow').value = report?.tomorrow || '';
+
+    updateReportStatus('');
+  }
+
+  function debounceSaveReport() {
+    if (reportSaveTimer) clearTimeout(reportSaveTimer);
+    updateReportStatus('保存中...');
+    reportSaveTimer = setTimeout(saveReportNow, 800);
+  }
+
+  async function saveReportNow() {
+    const report = {
+      dateKey: logsDateKey,
+      doneTasks: document.getElementById('reportDoneTasks').value,
+      memo: document.getElementById('reportMemo').value,
+      tomorrow: document.getElementById('reportTomorrow').value
+    };
+
+    await saveDailyReport(report);
+    updateReportStatus('保存済み');
+
+    setTimeout(() => updateReportStatus(''), 2000);
+  }
+
+  function updateReportStatus(text) {
+    const status = document.getElementById('reportSaveStatus');
+    status.textContent = text;
+    status.classList.toggle('saved', text === '保存済み');
+  }
+
+  async function copyDailyReport() {
+    const doneTasks = document.getElementById('reportDoneTasks').value;
+    const memo = document.getElementById('reportMemo').value;
+    const tomorrow = document.getElementById('reportTomorrow').value;
+
+    const lines = [`# ${logsDateKey} 日報`];
+
+    if (doneTasks) {
+      lines.push('\n## 進捗・完了タスク');
+      lines.push(doneTasks);
+    }
+
+    if (memo) {
+      lines.push('\n## 作業メモ');
+      lines.push(memo);
+    }
+
+    if (tomorrow) {
+      lines.push('\n## 明日やること');
+      lines.push(tomorrow);
+    }
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      showToast('日報をクリップボードにコピーしました');
+    } catch {
+      showToast('コピーに失敗しました');
+    }
+  }
+
+  async function insertLogsToReport() {
+    const logs = await getLogsForDate(logsDateKey);
+    const validLogs = logs.filter(l => l.type === 'taskDone');
+
+    if (validLogs.length === 0) {
+      showToast('挿入するログがありません');
+      return;
+    }
+
+    const lines = validLogs.map(l => {
+      const est = l.estimateMinutesSnapshot ? ` (${l.estimateMinutesSnapshot}m)` : '';
+      return `- ${l.titleSnapshot}${est}`;
+    });
+
+    const textarea = document.getElementById('reportDoneTasks');
+    const current = textarea.value;
+    textarea.value = current + (current ? '\n' : '') + lines.join('\n');
+
+    debounceSaveReport();
+    showToast('ログを挿入しました');
+  }
+
+  async function getSessionsForDate(dateKey) {
+    const allSessions = await getAllSessions();
+    return allSessions.filter(s => s.date === dateKey);
+  }
+
+  async function getAllSessions() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_SESSIONS, 'readonly');
+      const store = tx.objectStore(STORE_SESSIONS);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
   }
 
   // ===== Log Entry Creation (hook into status change) =====
@@ -2986,6 +3838,7 @@
     document.getElementById('timerReset').addEventListener('click', resetTimer);
     document.getElementById('timerStop').addEventListener('click', () => stopTimer(false));
     document.getElementById('changeTaskBtn').addEventListener('click', openTaskSelectModal);
+    document.getElementById('unlinkTaskBtn').addEventListener('click', unlinkActiveTask);
     document.getElementById('completeTaskBtn').addEventListener('click', completeActiveTask);
 
     // Timer mode
@@ -3076,12 +3929,66 @@
     });
     document.getElementById('logsCopyBtn').addEventListener('click', copyTodayLogs);
 
+    // Event listeners - Daily Report
+    document.getElementById('reportDoneTasks').addEventListener('input', debounceSaveReport);
+    document.getElementById('reportMemo').addEventListener('input', debounceSaveReport);
+    document.getElementById('reportTomorrow').addEventListener('input', debounceSaveReport);
+    document.getElementById('reportCopyBtn').addEventListener('click', copyDailyReport);
+    document.getElementById('reportInsertLogsBtn').addEventListener('click', insertLogsToReport);
+
     // Event listeners - Break / Pet
     document.getElementById('petPetBtn').addEventListener('click', petThePet);
     document.getElementById('petTreatBtn').addEventListener('click', giveTreat);
 
+    // Event listeners - Reminder Banner
+    document.getElementById('reminderOpen').addEventListener('click', () => handleReminderAction('open'));
+    document.getElementById('reminderDone').addEventListener('click', () => handleReminderAction('done'));
+    document.getElementById('reminderSnooze5').addEventListener('click', () => handleReminderAction('snooze5'));
+    document.getElementById('reminderSnooze10').addEventListener('click', () => handleReminderAction('snooze10'));
+    document.getElementById('reminderClose').addEventListener('click', () => handleReminderAction('close'));
+
+    // Event listeners - Settings (created date format)
+    const settingsFormatSelect = document.getElementById('settingsCreatedDateFormat');
+    if (settingsFormatSelect) {
+      settingsFormatSelect.value = appSettings.createdDateFormat;
+      settingsFormatSelect.addEventListener('change', (e) => {
+        appSettings.createdDateFormat = e.target.value;
+        saveSettings();
+        renderTasks();
+      });
+    }
+
+    // Event listeners - Task Detail: Due Time and Remind
+    const detailDueTime = document.getElementById('detailDueTime');
+    const detailRemindTime = document.getElementById('detailRemindTime');
+    if (detailDueTime) populateTimeSelect(detailDueTime);
+    if (detailRemindTime) populateTimeSelect(detailRemindTime);
+
+    const remindClearBtn = document.getElementById('detailRemindClear');
+    if (remindClearBtn) {
+      remindClearBtn.addEventListener('click', () => {
+        document.getElementById('detailRemindDate').value = '';
+        document.getElementById('detailRemindTime').value = '';
+      });
+    }
+
     // Visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+
+  // Populate time select with 15-min intervals
+  function populateTimeSelect(selectElement) {
+    // Already has empty option
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        const hStr = String(h).padStart(2, '0');
+        const mStr = String(m).padStart(2, '0');
+        const option = document.createElement('option');
+        option.value = `${hStr}:${mStr}`;
+        option.textContent = `${hStr}:${mStr}`;
+        selectElement.appendChild(option);
+      }
+    }
   }
 
   // Start app
