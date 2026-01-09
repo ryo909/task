@@ -354,6 +354,36 @@
             </select>
           </div>
           <hr class="settings-divider">
+
+          <!-- Sound Settings -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">🔔 通知音</h3>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settingsSoundEnabled">
+              <span>リマインド時に音を鳴らす</span>
+            </label>
+            <div class="settings-volume">
+              <label>音量</label>
+              <input type="range" id="settingsSoundVolume" min="0" max="100" value="50">
+              <span id="settingsVolumeLabel">50%</span>
+            </div>
+            <div class="settings-test-row">
+              <button class="btn btn-secondary btn-sm" id="settingsTestSound">🔊 テスト再生</button>
+              <span class="audio-status" id="audioStatus">※初回はテスト再生が必要です</span>
+            </div>
+          </div>
+          <hr class="settings-divider">
+
+          <!-- Reward Animation Settings -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">✨ 完了演出</h3>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settingsRewardEnabled" checked>
+              <span>完了時の演出を表示する</span>
+            </label>
+          </div>
+          <hr class="settings-divider">
+
           <button class="settings-btn" id="exportBtn">
             <span>📤</span> データをエクスポート
           </button>

@@ -61,8 +61,107 @@
   // Settings state
   let appSettings = {
     createdDateFormat: 'md_ampm', // 'md_ampm' | 'md' | 'md_hhmm'
-    soundEnabled: false
+    soundEnabled: false,
+    soundVolume: 0.5,
+    audioUnlocked: false,
+    soundPattern: 'doubleBeep',
+    rewardEnabled: true,
+    rewardAnimationEnabled: true
   };
+
+  // ===== Audio Context for WebAudio Beep =====
+  let audioContext = null;
+
+  function initAudioContext() {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioContext;
+  }
+
+  function playBeep(ctx, freq, startTime, duration, volume) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+
+    // Envelope: attack 0.005s, decay 0.04s, release 0.03s
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(volume, startTime + 0.005);
+    gain.gain.linearRampToValueAtTime(volume * 0.7, startTime + 0.045);
+    gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  }
+
+  async function playDoubleBeep(volume = 0.5) {
+    try {
+      const ctx = initAudioContext();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+
+      // First beep: 880Hz, 0.12s
+      playBeep(ctx, 880, now, 0.12, volume);
+      // Second beep: 988Hz, 0.12s after 0.08s gap (0.12 + 0.08 = 0.20)
+      playBeep(ctx, 988, now + 0.20, 0.12, volume);
+
+      return true;
+    } catch (e) {
+      console.warn('playDoubleBeep failed:', e);
+      return false;
+    }
+  }
+
+  async function testAndUnlockAudio() {
+    const success = await playDoubleBeep(appSettings.soundVolume);
+    if (success) {
+      appSettings.audioUnlocked = true;
+      await saveSettings();
+      showToast('通知音が有効になりました');
+      updateAudioStatusUI();
+    }
+    return success;
+  }
+
+  function updateAudioStatusUI() {
+    const statusEl = document.getElementById('audioStatus');
+    if (statusEl) {
+      if (appSettings.audioUnlocked) {
+        statusEl.textContent = '✓ Audio ready';
+        statusEl.classList.add('audio-ready');
+      } else {
+        statusEl.textContent = '※初回はテスト再生が必要です';
+        statusEl.classList.remove('audio-ready');
+      }
+    }
+  }
+
+  // ===== Completion Reward Animation =====
+  function triggerCompletionReward(taskId) {
+    if (!appSettings.rewardEnabled || !appSettings.rewardAnimationEnabled) return;
+
+    requestAnimationFrame(() => {
+      const card = document.querySelector(`.task-card[data-id="${taskId}"]`);
+      if (card) {
+        card.classList.add('reward-pop');
+        const onAnimEnd = () => {
+          card.classList.remove('reward-pop');
+          card.removeEventListener('animationend', onAnimEnd);
+        };
+        card.addEventListener('animationend', onAnimEnd);
+        // Fallback timeout
+        setTimeout(() => card.classList.remove('reward-pop'), 300);
+      }
+    });
+  }
 
   // ===== DOM Elements =====
   const elements = {};
@@ -567,6 +666,11 @@
 
     // Try Web Notification
     tryWebNotification(task);
+
+    // Play sound if enabled and unlocked
+    if (appSettings.soundEnabled && appSettings.audioUnlocked) {
+      playDoubleBeep(appSettings.soundVolume);
+    }
   }
 
   function showReminderBanner(task, taskDate) {
@@ -576,6 +680,22 @@
 
     text.textContent = `🔔 ${task.title}`;
     banner.classList.remove('hidden');
+
+    // Add audio unlock button if sound enabled but not unlocked
+    const existingUnlockBtn = banner.querySelector('.reminder-unlock-audio');
+    if (existingUnlockBtn) existingUnlockBtn.remove();
+
+    if (appSettings.soundEnabled && !appSettings.audioUnlocked) {
+      const unlockBtn = document.createElement('button');
+      unlockBtn.className = 'reminder-btn reminder-unlock-audio';
+      unlockBtn.textContent = '🔊 音を有効化';
+      unlockBtn.addEventListener('click', async () => {
+        await testAndUnlockAudio();
+        unlockBtn.remove();
+      });
+      const actions = banner.querySelector('.reminder-actions');
+      if (actions) actions.insertBefore(unlockBtn, actions.firstChild);
+    }
   }
 
   function hideReminderBanner() {
@@ -1421,7 +1541,12 @@
         await revertDoneLog(taskId);
       }
 
-      renderTasks();
+      await renderTasks();
+
+      // Trigger completion animation if becoming DONE
+      if (newStatus === 'DONE' && oldStatus !== 'DONE') {
+        triggerCompletionReward(taskId);
+      }
     }
   }
 
@@ -1744,8 +1869,13 @@
       reorderTasks(selectedDate, newOrder);
     } else {
       // Cross-section: move task
-      moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex).then(() => {
-        renderTasks();
+      const savedTaskId = draggedTaskId;
+      const isDoneDrop = newStatus === 'DONE';
+      moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex).then(async () => {
+        await renderTasks();
+        if (isDoneDrop) {
+          triggerCompletionReward(savedTaskId);
+        }
       });
     }
   }
@@ -1776,10 +1906,15 @@
     const targetSection = list.closest('.task-section');
     const newStatus = targetSection.dataset.status;
     const cards = Array.from(list.querySelectorAll('.task-card:not(.dragging)'));
+    const savedTaskId = draggedTaskId;
+    const isDoneDrop = newStatus === 'DONE';
 
     // Insert at end
-    moveTaskToSection(selectedDate, draggedTaskId, newStatus, cards.length).then(() => {
-      renderTasks();
+    moveTaskToSection(selectedDate, draggedTaskId, newStatus, cards.length).then(async () => {
+      await renderTasks();
+      if (isDoneDrop) {
+        triggerCompletionReward(savedTaskId);
+      }
     });
   }
 
@@ -3996,6 +4131,52 @@
     });
 
     elements.panicBtn.addEventListener('click', handlePanic);
+
+    // Event listeners - Sound/Reward Settings
+    const soundEnabledCheckbox = document.getElementById('settingsSoundEnabled');
+    const soundVolumeSlider = document.getElementById('settingsSoundVolume');
+    const volumeLabel = document.getElementById('settingsVolumeLabel');
+    const testSoundBtn = document.getElementById('settingsTestSound');
+    const rewardEnabledCheckbox = document.getElementById('settingsRewardEnabled');
+
+    if (soundEnabledCheckbox) {
+      soundEnabledCheckbox.checked = appSettings.soundEnabled;
+      soundEnabledCheckbox.addEventListener('change', async (e) => {
+        appSettings.soundEnabled = e.target.checked;
+        await saveSettings();
+      });
+    }
+
+    if (soundVolumeSlider && volumeLabel) {
+      soundVolumeSlider.value = appSettings.soundVolume * 100;
+      volumeLabel.textContent = Math.round(appSettings.soundVolume * 100) + '%';
+      soundVolumeSlider.addEventListener('input', (e) => {
+        const vol = parseInt(e.target.value) / 100;
+        volumeLabel.textContent = e.target.value + '%';
+        appSettings.soundVolume = vol;
+      });
+      soundVolumeSlider.addEventListener('change', async () => {
+        await saveSettings();
+      });
+    }
+
+    if (testSoundBtn) {
+      testSoundBtn.addEventListener('click', async () => {
+        await testAndUnlockAudio();
+      });
+    }
+
+    if (rewardEnabledCheckbox) {
+      rewardEnabledCheckbox.checked = appSettings.rewardEnabled;
+      rewardEnabledCheckbox.addEventListener('change', async (e) => {
+        appSettings.rewardEnabled = e.target.checked;
+        appSettings.rewardAnimationEnabled = e.target.checked;
+        await saveSettings();
+      });
+    }
+
+    // Update audio status on page load
+    updateAudioStatusUI();
 
     // Event listeners - Filters
     elements.filterChips.forEach(chip => {
