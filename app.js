@@ -801,6 +801,26 @@
     await saveDayRecord(record);
   }
 
+  // Reorder tasks within a list
+  async function reorderTasks(date, newOrderIds) {
+    console.log('[Debug] reorderTasks', date, newOrderIds);
+    const record = await getDateRecord(date);
+    if (!record) return;
+
+    const orderMap = {};
+    newOrderIds.forEach((id, index) => {
+      orderMap[id] = index;
+    });
+
+    record.tasks.forEach(t => {
+      if (orderMap[t.id] !== undefined) {
+        t.order = orderMap[t.id];
+      }
+    });
+
+    await saveDayRecord(record);
+  }
+
   // Move task to different status and reorder
   async function moveTaskToSection(date, taskId, newStatus, insertAtIndex) {
     const record = await getDateRecord(date);
@@ -1028,8 +1048,7 @@
 
     // Due badge (clickable for editing)
     if (task.dueAt) {
-      const dueBadge = createDueBadge(task);
-      row.appendChild(dueBadge);
+      row.appendChild(createDueBadge(task));
     }
 
     // Remind indicator
@@ -1082,15 +1101,8 @@
     const meta = document.createElement('div');
     meta.className = 'task-meta';
 
-    // Created date + days ago
-    const createdBadge = document.createElement('span');
-    createdBadge.className = 'created-badge';
-    const createdInfo = formatCreatedDate(task.createdAt);
-    createdBadge.textContent = createdInfo.text;
-    if (createdInfo.staleClass) {
-      createdBadge.classList.add(createdInfo.staleClass);
-    }
-    meta.appendChild(createdBadge);
+    // Created date (new style)
+    meta.appendChild(createCreatedBadge(task));
 
     // Estimate dropdown
     const estimateSelect = document.createElement('select');
@@ -1130,19 +1142,23 @@
 
     li.appendChild(meta);
 
-    // Card click opens detail (excluding interactive elements)
-    li.addEventListener('click', (e) => {
-      // Don't trigger if clicking certain elements
+    // Card dblclick opens detail - CHANGED
+    li.addEventListener('dblclick', (e) => {
       const tag = e.target.tagName.toLowerCase();
       if (tag === 'button' || tag === 'select' || tag === 'input' ||
         e.target.classList.contains('drag-handle') ||
         e.target.classList.contains('status-icon') ||
         e.target.classList.contains('priority-dot') ||
-        e.target.classList.contains('pin-btn')) {
+        e.target.classList.contains('pin-btn') ||
+        e.target.closest('.badge-due')) {
         return;
       }
       openTaskDetail(task.id);
     });
+
+    // Enable dragging on the card itself - CHANGED
+    li.draggable = true;
+    li.addEventListener('dragstart', (e) => handleDragStart(e, li, task.id));
 
     // Drag events for card (as drop target)
     li.addEventListener('dragover', handleDragOver);
@@ -1152,7 +1168,58 @@
     return li;
   }
 
-  // Format dueAt for display
+  // RE-INSERTED renderTasks
+  async function renderTasks() {
+    const record = await getDateRecord(selectedDate);
+    const tasks = record.tasks || [];
+    console.log('[Debug] renderTasks State:', tasks.map(t => ({ t: t.title, s: t.status, p: t.pinnedAt, o: t.order })));
+
+    // Separate tasks by status
+    const tasksInProgress = tasks.filter(t => t.status === 'IN_PROGRESS');
+    const tasksWaiting = tasks.filter(t => t.status === 'WAITING');
+    const tasksDone = tasks.filter(t => t.status === 'DONE');
+
+    // Sorting function: Pinned first, then by Order
+    const sortTasks = (a, b) => {
+      // 1. Pinned checks
+      if (a.pinnedAt && !b.pinnedAt) return -1;
+      if (!a.pinnedAt && b.pinnedAt) return 1;
+
+      // 2. If both pinned, newest pinned first
+      if (a.pinnedAt && b.pinnedAt) {
+        return b.pinnedAt - a.pinnedAt;
+      }
+
+      // 3. Normal order
+      return (a.order || 0) - (b.order || 0);
+    };
+
+    tasksInProgress.sort(sortTasks);
+    tasksWaiting.sort(sortTasks);
+    tasksDone.sort(sortTasks);
+
+    // Render lists
+    renderTaskList(elements.listInProgress, tasksInProgress);
+    renderTaskList(elements.listWaiting, tasksWaiting);
+    renderTaskList(elements.listDone, tasksDone);
+
+    // Update headers
+    if (elements.countInProgress) elements.countInProgress.textContent = tasksInProgress.length;
+    if (elements.countWaiting) elements.countWaiting.textContent = tasksWaiting.length;
+    if (elements.countDone) elements.countDone.textContent = tasksDone.length;
+
+    updateHeaderDate();
+    scheduleNextReminder();
+  }
+
+  function renderTaskList(container, tasks) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    tasks.forEach(task => {
+      container.appendChild(createTaskElement(task));
+    });
+  }
+
+  // Fix formatDueAt signature
   function formatDueAt(dueAt) {
     if (!dueAt) return null;
     const dueDate = new Date(dueAt);
@@ -1178,18 +1245,49 @@
 
   // Create due badge element
   function createDueBadge(task) {
-    const dueBadge = document.createElement('span');
-    dueBadge.className = 'due-badge clickable';
+    const badge = document.createElement('span');
+    badge.className = 'badge badge-due clickable';
+
+    const icon = document.createElement('span');
+    icon.className = 'badge-icon';
+    icon.textContent = '⏰';
+    badge.appendChild(icon);
+
     const dueInfo = formatDueAt(task.dueAt);
+    const text = document.createElement('span');
     if (dueInfo) {
-      dueBadge.textContent = dueInfo.text;
-      if (dueInfo.class) dueBadge.classList.add(dueInfo.class);
+      text.textContent = dueInfo.text;
+      if (dueInfo.class) badge.classList.add(dueInfo.class);
+    } else {
+      text.textContent = '期限なし';
     }
-    dueBadge.addEventListener('click', (e) => {
+    badge.appendChild(text);
+
+    badge.addEventListener('click', (e) => {
       e.stopPropagation();
-      openDuePopover(task, dueBadge);
+      openDuePopover(task, badge);
     });
-    return dueBadge;
+    return badge;
+  }
+
+  function createCreatedBadge(task) {
+    const badge = document.createElement('span');
+    badge.className = 'badge badge-created';
+
+    const icon = document.createElement('span');
+    icon.className = 'badge-icon';
+    icon.textContent = '🌱';
+    badge.appendChild(icon);
+
+    const createdInfo = formatCreatedDate(task.createdAt);
+    const text = document.createElement('span');
+    text.textContent = createdInfo.text;
+    badge.appendChild(text);
+
+    if (createdInfo.staleClass) {
+      badge.classList.add(createdInfo.staleClass);
+    }
+    return badge;
   }
 
   // Format datetime for display
@@ -1245,97 +1343,10 @@
     return { text: dateText, staleClass };
   }
 
-  async function renderTasks() {
-    const record = await getDateRecord(selectedDate);
-    const tasks = [...record.tasks].sort((a, b) => a.order - b.order);
 
-    // Get all pinned tasks (across all dates)
-    const allRecords = await getAllDayRecords();
-    const pinnedTasks = [];
-    for (const rec of allRecords) {
-      for (const task of rec.tasks) {
-        if (task.pinnedAt) {
-          pinnedTasks.push({ ...task, sourceDate: rec.date });
-        }
-      }
-    }
-    // Sort by pinnedAt
-    pinnedTasks.sort((a, b) => a.pinnedAt - b.pinnedAt);
-
-    // Render Pinned section
-    const pinnedSection = document.getElementById('pinnedSection');
-    const pinnedList = document.getElementById('pinnedList');
-    if (pinnedSection && pinnedList) {
-      while (pinnedList.firstChild) pinnedList.removeChild(pinnedList.firstChild);
-
-      if (pinnedTasks.length > 0) {
-        pinnedSection.classList.remove('hidden');
-        pinnedTasks.forEach(task => {
-          const el = createTaskElement(task);
-          // Store source date for pinned tasks from other dates
-          el.dataset.sourceDate = task.sourceDate;
-          pinnedList.appendChild(el);
-        });
-      } else {
-        pinnedSection.classList.add('hidden');
-      }
-    }
-
-    // Group by status
-    const grouped = {
-      'IN_PROGRESS': [],
-      'WAITING': [],
-      'DONE': []
-    };
-
-    tasks.forEach(task => {
-      if (currentFilter === 'all' || currentFilter === task.status) {
-        grouped[task.status].push(task);
-      }
-    });
-
-    // Render each section
-    const statusToKey = {
-      'IN_PROGRESS': 'InProgress',
-      'WAITING': 'Waiting',
-      'DONE': 'Done'
-    };
-
-    ['IN_PROGRESS', 'WAITING', 'DONE'].forEach(status => {
-      const key = statusToKey[status];
-      const list = elements[`list${key}`];
-      const count = elements[`count${key}`];
-
-      if (!list || !count) return;
-
-      // Clear list without innerHTML
-      while (list.firstChild) {
-        list.removeChild(list.firstChild);
-      }
-      count.textContent = grouped[status].length;
-
-      if (grouped[status].length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        const icon = document.createElement('span');
-        icon.className = 'empty-state-icon';
-        icon.textContent = '📭';
-        empty.appendChild(icon);
-        list.appendChild(empty);
-      } else {
-        grouped[status].forEach(task => {
-          list.appendChild(createTaskElement(task));
-        });
-      }
-    });
-
-    updateHeaderDate();
-
-    // Schedule reminders
-    scheduleNextReminder();
-  }
 
   function updateHeaderDate() {
+    if (!elements.headerDate) return;
     if (isToday(selectedDate)) {
       elements.headerDate.textContent = '今日';
     } else {
@@ -1806,6 +1817,183 @@
 
   function closeSettingsModal() {
     elements.settingsModal.classList.add('hidden');
+  }
+
+  // ===== Task Detail Modal =====
+  async function openTaskDetail(taskId, date = selectedDate) {
+    console.log('[Debug] openTaskDetail', taskId, date);
+    const record = await getDateRecord(date);
+    const task = record.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Populate Modal
+    const modal = elements.taskDetailModal;
+    modal.dataset.taskId = taskId;
+    modal.dataset.date = date;
+
+    document.getElementById('taskDetailTitle').value = task.title;
+    document.getElementById('taskDetailNote').value = task.note || '';
+
+    // Due Date/Time
+    const dDate = document.getElementById('detailDueDate');
+    const dTime = document.getElementById('detailDueTime');
+    if (dDate && dTime) {
+      if (task.dueAt) {
+        const d = new Date(task.dueAt);
+        dDate.value = formatDate(d);
+        dTime.value = formatTime(d) || '';
+      } else {
+        dDate.value = '';
+        dTime.value = '';
+      }
+    }
+
+    // Remind Date/Time
+    const rDate = document.getElementById('detailRemindDate');
+    const rTime = document.getElementById('detailRemindTime');
+    if (rDate && rTime) {
+      if (task.remindAt) {
+        const r = new Date(task.remindAt);
+        rDate.value = formatDate(r);
+        rTime.value = formatTime(r) || '';
+      } else {
+        rDate.value = '';
+        rTime.value = '';
+      }
+    }
+
+    renderSubtasks(task.subtasks || []);
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeTaskDetail() {
+    elements.taskDetailModal.classList.add('hidden');
+  }
+
+  async function saveTaskDetail() {
+    const modal = elements.taskDetailModal;
+    const taskId = modal.dataset.taskId;
+    const date = modal.dataset.date;
+
+    const title = document.getElementById('taskDetailTitle').value.trim();
+    if (!title) return;
+
+    const note = document.getElementById('taskDetailNote').value;
+
+    const update = { title, note, updatedAt: Date.now() };
+
+    // Handle Due
+    const dDateVal = document.getElementById('detailDueDate').value;
+    const dTimeVal = document.getElementById('detailDueTime').value;
+    if (dDateVal) {
+      const [y, m, d] = dDateVal.split('-').map(Number);
+      if (dTimeVal) {
+        const [h, min] = dTimeVal.split(':').map(Number);
+        update.dueAt = new Date(y, m - 1, d, h, min).getTime();
+      } else {
+        update.dueAt = new Date(y, m - 1, d, 18, 0).getTime();
+      }
+    } else {
+      update.dueAt = null;
+    }
+
+    // Handle Remind
+    const rDateVal = document.getElementById('detailRemindDate').value;
+    const rTimeVal = document.getElementById('detailRemindTime').value;
+    if (rDateVal && rTimeVal) {
+      const [y, m, d] = rDateVal.split('-').map(Number);
+      const [h, min] = rTimeVal.split(':').map(Number);
+      update.remindAt = new Date(y, m - 1, d, h, min).getTime();
+    } else {
+      update.remindAt = null;
+    }
+
+    const subs = [];
+    document.querySelectorAll('#subtaskList li').forEach(li => {
+      const text = li.querySelector('span').textContent;
+      const done = li.classList.contains('done');
+      subs.push({ text, done });
+    });
+    update.subtasks = subs;
+
+    await updateTask(date, taskId, update);
+    renderTasks();
+    if (currentScreen === 'calendar') {
+      await buildDueDateCache();
+      renderCalendar();
+    }
+    closeTaskDetail();
+  }
+
+  async function deleteTaskFromDetail() {
+    if (!confirm('削除しますか？')) return;
+    const modal = elements.taskDetailModal;
+    const taskId = modal.dataset.taskId;
+    const date = modal.dataset.date;
+
+    await deleteTask(date, taskId);
+    renderTasks();
+    if (currentScreen === 'calendar') {
+      await buildDueDateCache();
+      renderCalendar();
+    }
+    closeTaskDetail();
+  }
+
+  function renderSubtasks(subtasks) {
+    const list = document.getElementById('subtaskList');
+    list.innerHTML = '';
+    subtasks.forEach(sub => {
+      const li = document.createElement('li');
+      if (sub.done) li.classList.add('done');
+
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = sub.done;
+      check.addEventListener('change', () => {
+        li.classList.toggle('done', check.checked);
+      });
+
+      const span = document.createElement('span');
+      span.textContent = sub.text;
+
+      const del = document.createElement('button');
+      del.textContent = '×';
+      del.addEventListener('click', () => li.remove());
+
+      li.appendChild(check);
+      li.appendChild(span);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  function addSubtask() {
+    const input = document.getElementById('subtaskInput');
+    const val = input.value.trim();
+    if (!val) return;
+
+    const list = document.getElementById('subtaskList');
+    const li = document.createElement('li');
+
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+
+    const span = document.createElement('span');
+    span.textContent = val;
+
+    const del = document.createElement('button');
+    del.textContent = '×';
+    del.addEventListener('click', () => li.remove());
+
+    li.appendChild(check);
+    li.appendChild(span);
+    li.appendChild(del);
+    list.appendChild(li);
+
+    input.value = '';
+    input.focus();
   }
 
   // ===== Confirm Dialog =====
@@ -3990,6 +4178,8 @@
       }
     }
   }
+
+
 
   // Start app
   init().catch(console.error);
