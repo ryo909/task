@@ -15,9 +15,10 @@
     <!-- Screen Navigation -->
     <nav class="screen-nav">
       <button class="screen-tab active" data-screen="tasks">Tasks</button>
-      <button class="screen-tab" data-screen="focus">Focus</button>
+      <button class="screen-tab" data-screen="timer">Timer</button>
       <button class="screen-tab" data-screen="calendar">Calendar</button>
       <button class="screen-tab" data-screen="notes">Notes</button>
+      <button class="screen-tab" data-screen="count">Count</button>
       <button class="screen-tab" data-screen="logs">Logs</button>
       <button class="screen-tab" data-screen="break">Break</button>
     </nav>
@@ -119,11 +120,11 @@
       </button>
     </div>
 
-    <!-- ==================== FOCUS SCREEN ==================== -->
-    <div class="screen hidden" id="focusScreen">
-      <!-- Focus Header -->
+    <!-- ==================== TIMER SCREEN ==================== -->
+    <div class="screen hidden" id="timerScreen">
+      <!-- Timer Header -->
       <header class="focus-header">
-        <h1 class="focus-title">Focus</h1>
+        <h1 class="focus-title">Timer</h1>
         <span class="focus-task-name" id="focusTaskName">タスク未選択</span>
         <button class="header-icon" id="focusSettingsBtn" aria-label="設定">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -228,7 +229,44 @@
       <div class="notes-container" id="notesContainer"></div>
     </div>
 
+    <!-- ==================== COUNT SCREEN ==================== -->
+    <div class="screen hidden" id="countScreen">
+      <header class="screen-header">
+        <h2 class="screen-header-title">Count</h2>
+      </header>
+      <div class="count-content">
+        <textarea class="count-textarea" id="countTextarea" placeholder="テキストを入力またはペースト..."></textarea>
+        <div class="count-actions">
+          <button class="btn btn-secondary btn-sm" id="countClearBtn">Clear</button>
+          <button class="btn btn-secondary btn-sm" id="countCopyBtn">Copy</button>
+        </div>
+        <div class="count-results" id="countResults">
+          <div class="count-result-item">
+            <span class="count-label">Characters (incl. newlines)</span>
+            <span class="count-value" id="countCharsIncl">0</span>
+          </div>
+          <div class="count-result-item">
+            <span class="count-label">Characters (excl. newlines)</span>
+            <span class="count-value" id="countCharsExcl">0</span>
+          </div>
+          <div class="count-result-item">
+            <span class="count-label">Characters (excl. spaces)</span>
+            <span class="count-value" id="countCharsNoSpace">0</span>
+          </div>
+          <div class="count-result-item">
+            <span class="count-label">Lines</span>
+            <span class="count-value" id="countLines">0</span>
+          </div>
+          <div class="count-result-item">
+            <span class="count-label">Words</span>
+            <span class="count-value" id="countWords">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== LOGS SCREEN ==================== -->
+
     <div class="screen hidden" id="logsScreen">
       <header class="screen-header">
         <button class="nav-btn" id="logsPrev">‹</button>

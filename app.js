@@ -2194,12 +2194,14 @@
     if (tab) tab.classList.add('active');
 
     // Initialize screens
-    if (screenName === 'focus') {
+    if (screenName === 'timer') {
       initFocusScreen();
     } else if (screenName === 'calendar') {
       initCalendarScreen();
     } else if (screenName === 'notes') {
       initNotesScreen();
+    } else if (screenName === 'count') {
+      initCountScreen();
     } else if (screenName === 'logs') {
       initLogsScreen();
     } else if (screenName === 'break') {
@@ -2591,7 +2593,7 @@
       const task = record.tasks.find(t => t.id === taskId);
       if (task) {
         selectFocusTask(task);
-        switchScreen('focus');
+        switchScreen('timer');
       }
     });
   }
@@ -4008,6 +4010,67 @@
     await savePetState(petState);
   }
 
+  // ===== Count Screen =====
+  let countDebounceTimer = null;
+
+  function initCountScreen() {
+    // Just update the results when screen is shown
+    updateCountResults();
+  }
+
+  function updateCountResults() {
+    const textarea = document.getElementById('countTextarea');
+    if (!textarea) return;
+
+    const text = textarea.value.replace(/\r\n/g, '\n'); // Normalize newlines
+
+    // Characters including newlines
+    const charsIncl = text.length;
+
+    // Characters excluding newlines
+    const charsExcl = text.replace(/\n/g, '').length;
+
+    // Characters excluding spaces (half-width, full-width, tabs, newlines)
+    const charsNoSpace = text.replace(/[\s　\t\n]/g, '').length;
+
+    // Lines (empty = 0, otherwise split by \n)
+    const lines = text === '' ? 0 : text.split('\n').length;
+
+    // Words (split by whitespace, filter empty)
+    const words = text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+
+    // Update UI
+    document.getElementById('countCharsIncl').textContent = charsIncl;
+    document.getElementById('countCharsExcl').textContent = charsExcl;
+    document.getElementById('countCharsNoSpace').textContent = charsNoSpace;
+    document.getElementById('countLines').textContent = lines;
+    document.getElementById('countWords').textContent = words;
+  }
+
+  function debounceCountUpdate() {
+    if (countDebounceTimer) clearTimeout(countDebounceTimer);
+    countDebounceTimer = setTimeout(updateCountResults, 150);
+  }
+
+  function clearCountText() {
+    const textarea = document.getElementById('countTextarea');
+    if (textarea) {
+      textarea.value = '';
+      updateCountResults();
+    }
+  }
+
+  function copyCountText() {
+    const textarea = document.getElementById('countTextarea');
+    if (textarea && textarea.value) {
+      navigator.clipboard.writeText(textarea.value).then(() => {
+        showToast('コピーしました');
+      }).catch(() => {
+        showToast('コピーに失敗しました');
+      });
+    }
+  }
+
   // ===== Demo Data (Minimal: 1 per status) =====
   async function insertDemoData() {
     const record = await getDateRecord(selectedDate);
@@ -4308,6 +4371,20 @@
     // Event listeners - Break / Pet
     document.getElementById('petPetBtn').addEventListener('click', petThePet);
     document.getElementById('petTreatBtn').addEventListener('click', giveTreat);
+
+    // Event listeners - Count Screen
+    const countTextarea = document.getElementById('countTextarea');
+    if (countTextarea) {
+      countTextarea.addEventListener('input', debounceCountUpdate);
+    }
+    const countClearBtn = document.getElementById('countClearBtn');
+    if (countClearBtn) {
+      countClearBtn.addEventListener('click', clearCountText);
+    }
+    const countCopyBtn = document.getElementById('countCopyBtn');
+    if (countCopyBtn) {
+      countCopyBtn.addEventListener('click', copyCountText);
+    }
 
     // Event listeners - Reminder Banner
     document.getElementById('reminderOpen').addEventListener('click', () => handleReminderAction('open'));

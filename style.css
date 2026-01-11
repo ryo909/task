@@ -2867,3 +2867,80 @@ input {
   color: var(--accent-primary);
   border: 1px solid rgba(99, 102, 241, 0.3);
 }
+
+/* ===== COUNT SCREEN ===== */
+.count-content {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.count-textarea {
+  flex: 1;
+  min-height: 200px;
+  max-height: 40vh;
+  padding: var(--space-lg);
+  font-size: 16px;
+  font-family: inherit;
+  line-height: 1.6;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  resize: none;
+}
+
+.count-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.count-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.count-actions {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+}
+
+.count-results {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.count-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.count-result-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.count-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.count-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
