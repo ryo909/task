@@ -553,11 +553,12 @@ input {
 .date-chip-day {
   font-size: 10px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: #a0a0a5;
+  /* Improved visibility */
 }
 
 .date-chip.active .date-chip-day {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .date-chip-date {
@@ -953,14 +954,15 @@ input {
   padding: var(--space-sm) var(--space-md);
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #b0b0b5;
+  /* Improved from var(--text-muted) */
   background: transparent;
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
 }
 
 .screen-tab:hover {
-  color: var(--text-secondary);
+  color: white;
   background: var(--bg-card);
 }
 

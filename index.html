@@ -232,33 +232,33 @@
     <!-- ==================== COUNT SCREEN ==================== -->
     <div class="screen hidden" id="countScreen">
       <header class="screen-header">
-        <h2 class="screen-header-title">Count</h2>
+        <h2 class="screen-header-title">文字数カウント</h2>
       </header>
       <div class="count-content">
         <textarea class="count-textarea" id="countTextarea" placeholder="テキストを入力またはペースト..."></textarea>
         <div class="count-actions">
-          <button class="btn btn-secondary btn-sm" id="countClearBtn">Clear</button>
-          <button class="btn btn-secondary btn-sm" id="countCopyBtn">Copy</button>
+          <button class="btn btn-secondary btn-sm" id="countClearBtn">クリア</button>
+          <button class="btn btn-secondary btn-sm" id="countCopyBtn">コピー</button>
         </div>
         <div class="count-results" id="countResults">
           <div class="count-result-item">
-            <span class="count-label">Characters (incl. newlines)</span>
+            <span class="count-label">文字数（改行含む）</span>
             <span class="count-value" id="countCharsIncl">0</span>
           </div>
           <div class="count-result-item">
-            <span class="count-label">Characters (excl. newlines)</span>
+            <span class="count-label">文字数（改行除く）</span>
             <span class="count-value" id="countCharsExcl">0</span>
           </div>
           <div class="count-result-item">
-            <span class="count-label">Characters (excl. spaces)</span>
+            <span class="count-label">文字数（空白除く）</span>
             <span class="count-value" id="countCharsNoSpace">0</span>
           </div>
           <div class="count-result-item">
-            <span class="count-label">Lines</span>
+            <span class="count-label">行数</span>
             <span class="count-value" id="countLines">0</span>
           </div>
           <div class="count-result-item">
-            <span class="count-label">Words</span>
+            <span class="count-label">単語数（参考）</span>
             <span class="count-value" id="countWords">0</span>
           </div>
         </div>

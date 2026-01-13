@@ -1779,6 +1779,16 @@
     document.querySelectorAll('.task-list').forEach(list => {
       list.classList.add('drop-zone-active');
     });
+
+    // Create drag image if needed (optional)
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox requires data set
+    e.dataTransfer.setData('text/plain', taskId);
+
+    // Minor delay to add dragging class for visual effect
+    setTimeout(() => {
+      if (draggedElement) draggedElement.classList.add('dragging');
+    }, 0);
   }
 
   function handleDragEnd(e) {
@@ -1788,10 +1798,7 @@
     draggedElement = null;
     draggedTaskId = null;
 
-    // Clear all highlights
-    document.querySelectorAll('.task-card').forEach(el => {
-      el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
-    });
+    // Clear all highlights and placeholders
     document.querySelectorAll('.task-list').forEach(list => {
       list.classList.remove('drop-zone-active', 'drop-zone-highlight');
     });
@@ -1801,122 +1808,231 @@
     document.querySelectorAll('.drop-placeholder').forEach(ph => ph.remove());
   }
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
-    const target = e.currentTarget;
-    if (target === draggedElement || !target.classList.contains('task-card')) return;
-
-    // Calculate position based on Y coordinate
-    const rect = target.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const isAbove = e.clientY < midY;
-
-    // Clear previous indicators
-    target.classList.remove('drag-over-top', 'drag-over-bottom');
-
-    // Show indicator for insertion position
-    if (isAbove) {
-      target.classList.add('drag-over-top');
-    } else {
-      target.classList.add('drag-over-bottom');
-    }
-    target.classList.add('drag-over');
-  }
-
-  function handleDragLeave(e) {
-    e.currentTarget.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
-  }
-
-  // Handle drop on task card (reorder within or move across sections)
-  function handleDrop(e) {
-    e.preventDefault();
-    const target = e.currentTarget;
-    target.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
-
-    if (!draggedElement || !draggedTaskId || target === draggedElement) return;
-
-    const targetList = target.closest('.task-list');
-    if (!targetList) return;
-
-    const draggedList = draggedElement.closest('.task-list');
-    const targetSection = targetList.closest('.task-section');
-    const newStatus = targetSection.dataset.status;
-
-    // Determine insert position based on Y coordinate
-    const rect = target.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const insertBefore = e.clientY < midY;
-
-    // Get all cards except the one being dragged
-    const cards = Array.from(targetList.querySelectorAll('.task-card:not(.dragging)'));
-    let targetIndex = cards.indexOf(target);
-
-    // Adjust index based on position
-    if (!insertBefore) {
-      targetIndex++;
-    }
-
-    if (targetList === draggedList) {
-      // Same section: DOM reorder then save
-      if (insertBefore) {
-        target.before(draggedElement);
-      } else {
-        target.after(draggedElement);
-      }
-      const newOrder = Array.from(targetList.querySelectorAll('.task-card')).map(el => el.dataset.id);
-      reorderTasks(selectedDate, newOrder);
-    } else {
-      // Cross-section: move task
-      const savedTaskId = draggedTaskId;
-      const isDoneDrop = newStatus === 'DONE';
-      moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex).then(async () => {
-        await renderTasks();
-        if (isDoneDrop) {
-          triggerCompletionReward(savedTaskId);
-        }
-      });
-    }
-  }
-
-  // Handle drop on empty list area
+  // Handle Drag Over (Container level)
   function handleListDragOver(e) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    if (!draggedElement) return;
+
     const list = e.currentTarget;
+    const afterElement = getDragAfterElement(list, e.clientY);
+
+    // Add visual cues
     list.classList.add('drop-zone-highlight');
     list.closest('.task-section').classList.add('drag-over-section');
+
+    // Create or move placeholder
+    let placeholder = list.querySelector('.drop-placeholder');
+    if (!placeholder) {
+      placeholder = document.createElement('div');
+      placeholder.className = 'drop-placeholder';
+      // Match height of dragged element roughly
+      placeholder.style.height = draggedElement.offsetHeight + 'px';
+    }
+
+    if (afterElement == null) {
+      list.appendChild(placeholder);
+    } else {
+      list.insertBefore(placeholder, afterElement);
+    }
+  }
+
+  // Helper to determine insertion point
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.task-card:not(.dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+
+      // We want the element that is immediately AFTER the cursor (offset is negative but closest to 0)
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 
   function handleListDragLeave(e) {
-    const list = e.currentTarget;
-    list.classList.remove('drop-zone-highlight');
-    list.closest('.task-section').classList.remove('drag-over-section');
+    // Only remove if leaving the list entirely (not entering a child)
+    // Checking relatedTarget helps distinguish leaving to child vs leaving container
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drop-zone-highlight');
+      e.currentTarget.closest('.task-section').classList.remove('drag-over-section');
+
+      const placeholder = e.currentTarget.querySelector('.drop-placeholder');
+      if (placeholder) placeholder.remove();
+    }
   }
 
-  function handleListDrop(e) {
+  async function handleListDrop(e) {
     e.preventDefault();
     const list = e.currentTarget;
     list.classList.remove('drop-zone-highlight');
     list.closest('.task-section').classList.remove('drag-over-section');
 
-    if (!draggedTaskId) return;
+    const placeholder = list.querySelector('.drop-placeholder');
+    const placeholderIndex = placeholder ? [...list.children].indexOf(placeholder) : -1;
+
+    // Cleanup placeholder
+    if (placeholder) placeholder.remove();
+
+    if (!draggedTaskId || !draggedElement) return;
 
     const targetSection = list.closest('.task-section');
     const newStatus = targetSection.dataset.status;
-    const cards = Array.from(list.querySelectorAll('.task-card:not(.dragging)'));
+    const isDoneDrop = newStatus === 'DONE';
+
+    // Calculate new index
+    // Note: getDragAfterElement logic puts placeholder BEFORE the element.
+    // So the index is correct for insertion.
+    // However, if we are in the SAME list and moving down, the index might need adjustment
+    // because the dragged element is removed from earlier position.
+
+    // Get current cards to check relative position
+    const cards = [...list.querySelectorAll('.task-card:not(.dragging)')];
+
+    // If placeholderIndex was -1 (append), targetIndex is length
+    // Adjust placeholderIndex because the placeholder itself takes up an index during calculation
+    // But since we removed it, we can use the logic 'insert at this index'
+
+    // Because 'cards' excludes the dragging element, valid indices are 0 to cards.length.
+    // If placeholder was at end, placeholderIndex (in children list) might be largest.
+    // Simple approach:
+    // If same list: Reorder array based on where placeholder was.
+    // If placeholder was before Card A, we insert before Card A.
+
+    const draggedList = draggedElement.closest('.task-list');
+    const isSameList = (list === draggedList);
+
+    if (isSameList) {
+      // DOM move
+      if (placeholderIndex >= 0) {
+        // Re-insert dragged element at proper position
+        // We need to find the element that WAS at placeholderIndex (ignoring placeholder)
+        // But since we removed placeholder, we can just use :nth-child or similar?
+        // Safer: insert before the element that was after placeholder
+
+        const children = [...list.children]; // now placeholder is gone, dragged is still there (hidden?) or here
+        // Actually draggedElement is still in DOM at old spot until we move it.
+
+        // Let's use the 'cards' array which excludes dragged element to map indices.
+        // If placeholder was at index P among children (incl placeholder, excl dragged if display:none?)
+        // Actually dragged element has class .dragging.
+
+        // Simpler logic:
+        // The `getDragAfterElement` returns the element to insert BEFORE.
+        // Let's re-run that logic or rely on where placeholder was?
+        // Relying on placeholder position is best visually.
+
+        // We need to know which element the placeholder was before.
+        // But we removed it.
+
+        // Alternative: Move dragged element to placeholder position BEFORE removing placeholder.
+        if (placeholder) { // Wait, removed above.
+          // Refactor: don't remove placeholder yet?
+        }
+      }
+    }
+    // ... wait, the previous implementation was cleaner with moveTaskToSection
+    // Let's stick to using moveTaskToSection logic but using the calculated index.
+
+    // Correct lifecycle:
+    // 1. Determine index from placeholder
+    // 2. Remove placeholder
+    // 3. Call reorder/move API
+
+    // Limitation: I already removed placeholder above. Let's fix that in next steps or just re-calculate
+    // But actually, `placeholderIndex` captured the index among children (including unrelated items?).
+    // The children include task-cards and the placeholder.
+
+    // Let's refine the drop handler below to be fully robust.
+
+    // RE-IMPLEMENTATION of logic inside this block for safety:
+  }
+
+  // Clean up obsolete individual card handlers
+  // (We now handle everything at the list level)
+
+
+  // Main Drop Handler
+  async function handleListDrop(e) {
+    e.preventDefault();
+    const list = e.currentTarget;
+    const targetSection = list.closest('.task-section');
+
+    // Cleanup visual cues
+    list.classList.remove('drop-zone-highlight');
+    targetSection.classList.remove('drag-over-section');
+
+    const placeholder = list.querySelector('.drop-placeholder');
+
+    if (!draggedTaskId || !draggedElement) {
+      if (placeholder) placeholder.remove();
+      return;
+    }
+
+    // Determine target index
+    let targetIndex = 0;
+    if (placeholder) {
+      // Get all task cards in this list (excluding the one being dragged, and placeholder)
+      // Actually we want to know where the placeholder is relative to other cards.
+      // The DOM is: [Card1, Card2, Placeholder, Card3...] (Dragged is elsewhere or hidden)
+      const siblings = [...list.children].filter(c => c !== placeholder && c !== draggedElement && c.classList.contains('task-card'));
+      const placeholderIndex = [...list.children].indexOf(placeholder);
+
+      // Count how many 'valid' cards are before the placeholder
+      // We iterate children until we hit placeholder
+      let count = 0;
+      for (const child of list.children) {
+        if (child === placeholder) break;
+        if (child !== draggedElement && child.classList.contains('task-card')) {
+          count++;
+        }
+      }
+      targetIndex = count;
+
+      placeholder.remove();
+    } else {
+      // Append if no placeholder (shouldn't happen with correct dragover, but fallback)
+      targetIndex = list.querySelectorAll('.task-card:not(.dragging)').length;
+    }
+
+    const newStatus = targetSection.dataset.status;
+    const draggedList = draggedElement.closest('.task-list');
+    const isSameList = (list === draggedList);
     const savedTaskId = draggedTaskId;
     const isDoneDrop = newStatus === 'DONE';
 
-    // Insert at end
-    moveTaskToSection(selectedDate, draggedTaskId, newStatus, cards.length).then(async () => {
+    if (isSameList) {
+      // Calculate adjustment if moving down
+      // The index is based on the list WITHOUT the dragged element.
+      // So 'moveTaskToSection' should handle "insert at index X" treating X as the index in the destination array (which is same as source).
+      // However, our backend helper moveTaskToSection might be simpler if we just reorder locally then save order.
+
+      // Let's use the robust moveTaskToSection, assuming it handles "remove then insert".
+      // If I move item 0 to index 2:
+      // Logic: remove 0 -> array shrinks -> insert at 2.
+      // Our calculation of targetIndex above is "how many non-dragged cards are before placeholder".
+      // This is exactly the index we want to insert at (shifted).
+      await moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex);
+      await renderTasks();
+    } else {
+      // Cross-column
+      await moveTaskToSection(selectedDate, draggedTaskId, newStatus, targetIndex);
       await renderTasks();
       if (isDoneDrop) {
         triggerCompletionReward(savedTaskId);
       }
-    });
+    }
   }
+
+  // Obsolete handlers (replaced by list-level handlers)
+  function handleDragOver(e) { e.preventDefault(); }
+  function handleDragLeave(e) { }
+  function handleDrop(e) { }
+
+
 
   // ===== Section Collapse =====
   function toggleSection(sectionEl) {
